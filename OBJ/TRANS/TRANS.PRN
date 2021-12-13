@@ -1,0 +1,1310 @@
+0000                       0001 ; Z80 to 8086 Translator  version 2.21
+0000                       0002 ;  Runs on the 8086 under 86-DOS
+0000                       0003 ; by Tim Paterson
+0000                       0004 ;
+0000                       0005 	ORG	100H
+0100                       0006 EOF:	EQU	1AH	;End of file
+0100                       0007 EOL:	EQU	0DH
+0100                       0008 FCB:	EQU	5CH
+0100                       0009 SYSTEM:	EQU	5
+0100                       0010 OPEN:	EQU	15
+0100                       0011 CLOSE:	EQU	16
+0100                       0012 SETDMA:	EQU	26
+0100                       0013 CREATE:	EQU	22
+0100                       0014 DELETE:	EQU	19
+0100                       0015 READ:	EQU	20
+0100                       0016 WRITE:	EQU	21
+0100                       0017 PRNBUF:	EQU	9
+0100 BC 4A 0F              0018 	MOV	SP,STACK
+0103 BA 61 0C              0019 	MOV	DX,HEADER
+0106 B1 09                 0020 	MOV	CL,9
+0108 E8 FA FE              0021 	CALL	SYSTEM
+010B BB 68 00              0022 	MOV	BX,FCB+12
+010E 32 C0                 0023 	XOR	AL,AL
+0110 B5 04                 0024 	MOV	CH,4
+0112                       0025 CLRFCB:
+0112 88 07                 0026 	MOV	[BX],AL
+0114 43                    0027 	INC	BX
+0115 FE CD                 0028 	DEC	CH
+0117 75 F9                 0029 	JNZ	CLRFCB
+0119 A2 7C 00              0030 	MOV	[FCB+32],AL
+011C BB 5C 00              0031 	MOV	BX,FCB
+011F BA F7 0E              0032 	MOV	DX,PUTFCB
+0122 B9 10 00              0033 	MOV	CX,16
+0125 FC                    0034 	UP
+0126 8B F3                 0035 	MOV	SI,BX
+0128 8B FA                 0036 	MOV	DI,DX
+012A F3                    0037 	REP
+012B A4                    0038 	MOVB
+012C 8B D7                 0039 	MOV	DX,DI
+012E 8B DE                 0040 	MOV	BX,SI
+0130 A2 17 0F              0041 	MOV	[PUTFCB+32],AL
+0133 BB 41 53              0042 	MOV	BX,"A"+5300H	;"AS"
+0136 89 1E 00 0F           0043 	MOV	[PUTFCB+9],BX
+013A B0 4D                 0044 	MOV	AL,'M'
+013C A2 02 0F              0045 	MOV	[PUTFCB+11],AL
+013F BA 5C 00              0046 	MOV	DX,FCB
+0142 B1 0F                 0047 	MOV	CL,OPEN
+0144 E8 BE FE              0048 	CALL	SYSTEM
+0147 FE C0                 0049 	INC	AL
+0149 BA A2 0C              0050 	MOV	DX,NOFILE
+014C 74 15                 0051 	JZ	ABORTJ
+014E BA F7 0E              0052 	MOV	DX,PUTFCB
+0151 B1 13                 0053 	MOV	CL,DELETE
+0153 E8 AF FE              0054 	CALL	SYSTEM
+0156 BA F7 0E              0055 	MOV	DX,PUTFCB
+0159 B1 16                 0056 	MOV	CL,CREATE
+015B E8 A7 FE              0057 	CALL	SYSTEM
+015E FE C0                 0058 	INC	AL
+0160 BA 8A 0C              0059 	MOV	DX,NOROOM
+0163                       0060 ABORTJ:
+0163 74 73                 0061 	JZ	ABORT
+0165 BA F7 0E              0062 	MOV	DX,PUTFCB
+0168 B1 0F                 0063 	MOV	CL,OPEN
+016A E8 98 FE              0064 	CALL	SYSTEM
+016D BB F7 0D              0065 	MOV	BX,PUTBUF
+0170 89 1E 01 0D           0066 	MOV	[PUTPT],BX
+0174 BB F7 0E              0067 	MOV	BX,GETBUF+80H
+0177 89 1E 03 0D           0068 	MOV	[GETPT],BX
+017B                       0069 TRANLN:
+017B 32 C0                 0070 	XOR	AL,AL
+017D A2 57 0D              0071 	MOV	[OP1],AL
+0180 A2 A7 0D              0072 	MOV	[OP2],AL
+0183 BB 07 0D              0073 	MOV	BX,OPCODE
+0186 E8 F4 00              0074 	CALL	LOAD
+0189 BB 57 0D              0075 	MOV	BX,OP1
+018C E8 27 01              0076 	CALL	GETOP
+018F C6 07 00              0077 	MOV	B,[BX],0
+0192 BB A7 0D              0078 	MOV	BX,OP2
+0195 E8 1E 01              0079 	CALL	GETOP
+0198                       0080 DOLIN:
+0198 C6 07 00              0081 	MOV	B,[BX],0
+019B E8 23 02              0082 	CALL	FINDOP
+019E                       0083 ENLIN:
+019E BC 4A 0F              0084 	MOV	SP,STACK
+01A1 A0 05 0D              0085 	MOV	AL,[CHAR]
+01A4 3C 3B                 0086 	CMP	AL,';'
+01A6 75 07                 0087 	JNZ	NOCOM
+01A8 B0 09                 0088 	MOV	AL,9
+01AA E8 59 00              0089 	CALL	PUTCH
+01AD B0 3B                 0090 	MOV	AL,';'
+01AF                       0091 NOCOM:
+01AF E8 54 00              0092 	CALL	PUTCH
+01B2                       0093 PUTLIN:
+01B2 3C 1A                 0094 	CMP	AL,EOF
+01B4 74 0C                 0095 	JZ	END
+01B6 E8 8C 00              0096 	CALL	GETCH
+01B9 E8 4A 00              0097 	CALL	PUTCH
+01BC 3C 0A                 0098 	CMP	AL,10
+01BE 75 F2                 0099 	JNZ	PUTLIN
+01C0 EB B9                 0100 	JP	TRANLN
+01C2                       0101 END:
+01C2 B5 7F                 0102 	MOV	CH,127
+01C4 B0 1A                 0103 	MOV	AL,1AH
+01C6                       0104 FILL:
+01C6 E8 3D 00              0105 	CALL	PUTCH
+01C9 FE CD                 0106 	DEC	CH
+01CB 75 F9                 0107 	JNZ	FILL
+01CD BA F7 0E              0108 	MOV	DX,PUTFCB
+01D0 B1 10                 0109 	MOV	CL,CLOSE
+01D2 E8 30 FE              0110 	CALL	SYSTEM
+01D5 BA B5 0C              0111 	MOV	DX,ENDMES
+01D8                       0112 ABORT:
+01D8 B1 09                 0113 	MOV	CL,PRNBUF
+01DA E8 28 FE              0114 	CALL	SYSTEM
+01DD E9 20 FE              0115 	JMP	0
+01E0                       0116 DELIM:
+01E0 E8 62 00              0117 	CALL	GETCH
+01E3                       0118 DELCHK:
+01E3 3C 0D                 0119 	CMP	AL,EOL
+01E5 74 B1                 0120 	JZ	DOLIN
+01E7 3C 1A                 0121 	CMP	AL,EOF
+01E9 74 AD                 0122 	JZ	DOLIN
+01EB 3C 3B                 0123 	CMP	AL,';'
+01ED 74 A9                 0124 	JZ	DOLIN
+01EF 3C 20                 0125 	CMP	AL,' '
+01F1 74 0A                 0126 	JZ	RET
+01F3 3C 3A                 0127 	CMP	AL,':'
+01F5 74 06                 0128 	JZ	RET
+01F7 3C 2C                 0129 	CMP	AL,','
+01F9 74 02                 0130 	JZ	RET
+01FB 3C 09                 0131 	CMP	AL,9
+01FD C3                    0132 	RET
+01FE                       0133 HEX:
+01FE 24 0F                 0134 	AND	AL,0FH
+0200 04 90                 0135 	ADD	AL,90H
+0202 27                    0136 	DAA
+0203 14 40                 0137 	ADC	AL,40H
+0205 27                    0138 	DAA
+0206                       0139 PUTCH:
+0206 53                    0140 	PUSH	BX
+0207 52                    0141 	PUSH	DX
+0208 51                    0142 	PUSH	CX
+0209 9F                    0143 	LAHF
+020A 86 E0                 0144 	XCHG	AH,AL
+020C 50                    0145 	PUSH	AX
+020D 86 E0                 0146 	XCHG	AH,AL
+020F 24 7F                 0147 	AND	AL,7FH
+0211 8B 1E 01 0D           0148 	MOV	BX,[PUTPT]
+0215 88 07                 0149 	MOV	[BX],AL
+0217 43                    0150 	INC	BX
+0218 89 1E 01 0D           0151 	MOV	[PUTPT],BX
+021C 81 FB 77 0E           0152 	CMP	BX,PUTBUF+80H
+0220 75 1B                 0153 	JNZ	POPRET
+0222 BA F7 0D              0154 	MOV	DX,PUTBUF
+0225 89 16 01 0D           0155 	MOV	[PUTPT],DX
+0229 B1 1A                 0156 	MOV	CL,SETDMA
+022B E8 D7 FD              0157 	CALL	SYSTEM
+022E BA F7 0E              0158 	MOV	DX,PUTFCB
+0231 B1 15                 0159 	MOV	CL,WRITE
+0233 E8 CF FD              0160 	CALL	SYSTEM
+0236 0A C0                 0161 	OR	AL,AL
+0238 BA CE 0C              0162 	MOV	DX,WRTERR
+023B 75 9B                 0163 	JNZ	ABORT
+023D                       0164 POPRET:
+023D 58                    0165 	POP	AX
+023E 86 E0                 0166 	XCHG	AH,AL
+0240 9E                    0167 	SAHF
+0241                       0168 NOTAF:
+0241 59                    0169 	POP	CX
+0242 5A                    0170 	POP	DX
+0243 5B                    0171 	POP	BX
+0244 C3                    0172 	RET
+0245                       0173 ;
+0245                       0174 ; Get character from source file.
+0245                       0175 ;
+0245                       0176 GETCH:
+0245 53                    0177 	PUSH	BX
+0246 52                    0178 	PUSH	DX
+0247 51                    0179 	PUSH	CX
+0248 8B 1E 03 0D           0180 	MOV	BX,[GETPT]	; Get buffer pointer.
+024C 81 FB F7 0E           0181 	CMP	BX,GETBUF+80H	; Past end-of-buffer?
+0250 75 1F                 0182 	JNZ	GETIT		; Jump if not.
+0252 BA 77 0E              0183 	MOV	DX,GETBUF	; Set `DMA address'.
+0255 B1 1A                 0184 	MOV	CL,SETDMA
+0257 E8 AB FD              0185 	CALL	SYSTEM
+025A BA 5C 00              0186 	MOV	DX,FCB		; Read the next record from source file.
+025D B1 14                 0187 	MOV	CL,READ
+025F E8 A3 FD              0188 	CALL	SYSTEM
+0262 3C 00                 0189 	CMP	AL,0		; Entire record read OK?
+0264 74 08                 0190 	JE	OKRECORD
+0266 3C 03                 0191 	CMP	AL,3		; Partial record read?
+0268 74 04                 0192 	JE	OKRECORD
+026A B0 1A                 0193 	MOV	AL,EOF		; Force end-of-file character in case
+026C EB 0A                 0194 	JP	TESEND		;  there is nothing in the record.
+026E                       0195 OKRECORD:
+026E BB 77 0E              0196 	MOV	BX,GETBUF	; Reset buffer pointer.
+0271                       0197 GETIT:
+0271 8A 07                 0198 	MOV	AL,[BX]		; Get next character from buffer.
+0273 43                    0199 	INC	BX		; Point to next character.
+0274 89 1E 03 0D           0200 	MOV	[GETPT],BX	; Save new pointer.
+0278                       0201 TESEND:
+0278 A2 05 0D              0202 	MOV	[CHAR],AL
+027B EB C4                 0203 	JP	NOTAF		; Pop registers and return.
+027D                       0204 LOAD:
+027D E8 60 FF              0205 	CALL	DELIM
+0280 74 0D                 0206 	JZ	LOADOP
+0282                       0207 EATLAB:
+0282 E8 81 FF              0208 	CALL	PUTCH
+0285 E8 58 FF              0209 	CALL	DELIM
+0288 75 F8                 0210 	JNZ	EATLAB
+028A                       0211 ENLAB:
+028A B0 3A                 0212 	MOV	AL,':'
+028C E8 77 FF              0213 	CALL	PUTCH
+028F                       0214 LOADOP:
+028F BB 07 0D              0215 	MOV	BX,OPCODE
+0292                       0216 EATEM:
+0292 E8 4B FF              0217 	CALL	DELIM
+0295 74 FB                 0218 	JZ	EATEM
+0297                       0219 LOADLP:
+0297 E8 74 00              0220 	CALL	IDCHK
+029A 73 03                 0221 	JNC	$+5
+029C E9 A0 01              0222 	JMP	OPERR
+029F 88 07                 0223 	MOV	[BX],AL
+02A1 43                    0224 	INC	BX
+02A2 E8 3B FF              0225 	CALL	DELIM
+02A5 75 F0                 0226 	JNZ	LOADLP
+02A7 C6 07 00              0227 	MOV	B,[BX],0
+02AA 3C 3A                 0228 	CMP	AL,':'
+02AC 75 96                 0229 	JNZ	RET
+02AE BB 07 0D              0230 	MOV	BX,OPCODE
+02B1 E8 D6 01              0231 	CALL	TRANS
+02B4 EB D4                 0232 	JP	ENLAB
+02B6                       0233 GETOP:
+02B6 32 C0                 0234 	XOR	AL,AL
+02B8 9F                    0235 	LAHF
+02B9 95                    0236 	XCHG	AX,BP
+02BA 9E                    0237 	SAHF
+02BB                       0238 GETLP:
+02BB E8 22 FF              0239 	CALL	DELIM
+02BE 74 FB                 0240 	JZ	GETLP
+02C0                       0241 OPCHAR:
+02C0 3C 28                 0242 	CMP	AL,'('
+02C2 75 0D                 0243 	JNZ	NOTLEF
+02C4 9F                    0244 	LAHF
+02C5 95                    0245 	XCHG	AX,BP
+02C6 9E                    0246 	SAHF
+02C7 FE C0                 0247 	INC	AL
+02C9 9F                    0248 	LAHF
+02CA 95                    0249 	XCHG	AX,BP
+02CB 9E                    0250 	SAHF
+02CC C6 07 5B              0251 	MOV	B,[BX],'['
+02CF EB 1C                 0252 	JP	NEXCH
+02D1                       0253 NOTLEF:
+02D1 3C 29                 0254 	CMP	AL,')'
+02D3 75 0D                 0255 	JNZ	NOTRIT
+02D5 9F                    0256 	LAHF
+02D6 95                    0257 	XCHG	AX,BP
+02D7 9E                    0258 	SAHF
+02D8 FE C8                 0259 	DEC	AL
+02DA 9F                    0260 	LAHF
+02DB 95                    0261 	XCHG	AX,BP
+02DC 9E                    0262 	SAHF
+02DD C6 07 5D              0263 	MOV	B,[BX],']'
+02E0 EB 0B                 0264 	JP	NEXCH
+02E2                       0265 NOTRIT:
+02E2 88 07                 0266 	MOV	[BX],AL
+02E4 3C 27                 0267 	CMP	AL,''''
+02E6 74 13                 0268 	JZ	EATQUO
+02E8 E8 23 00              0269 	CALL	IDCHK
+02EB 73 38                 0270 	JNC	GETID
+02ED                       0271 NEXCH:
+02ED 43                    0272 	INC	BX
+02EE E8 54 FF              0273 	CALL	GETCH
+02F1                       0274 IDRET:
+02F1 E8 EF FE              0275 	CALL	DELCHK
+02F4 75 CA                 0276 	JNZ	OPCHAR
+02F6 3C 20                 0277 	CMP	AL,' '
+02F8 74 C6                 0278 	JZ	OPCHAR
+02FA C3                    0279 	RET
+02FB                       0280 EATQUO:
+02FB 43                    0281 	INC	BX
+02FC E8 46 FF              0282 	CALL	GETCH
+02FF 88 07                 0283 	MOV	[BX],AL
+0301 3C 3B                 0284 	CMP	AL,';'
+0303 74 03                 0285 	JZ	L0000
+0305 E8 DB FE              0286 	CALL	DELCHK
+0308                       0287 L0000:	
+0308 3C 27                 0288 	CMP	AL,''''
+030A 75 EF                 0289 	JNZ	EATQUO
+030C EB DF                 0290 	JP	NEXCH
+030E                       0291 IDCHK:
+030E 3C 30                 0292 	CMP	AL,'0'
+0310 72 E8                 0293 	JC	RET
+0312 3C 3A                 0294 	CMP	AL,'9'+1
+0314 F5                    0295 	CMC
+0315 73 E3                 0296 	JNC	RET
+0317 3C 40                 0297 	CMP	AL,40H
+0319 72 DF                 0298 	JC	RET
+031B 24 5F                 0299 	AND	AL,5FH
+031D 3C 41                 0300 	CMP	AL,'A'
+031F 72 D9                 0301 	JC	RET
+0321 3C 5B                 0302 	CMP	AL,'Z'+1
+0323 F5                    0303 	CMC
+0324 C3                    0304 	RET
+0325                       0305 GETID:
+0325 88 07                 0306 	MOV	[BX],AL
+0327 B5 01                 0307 	MOV	CH,1
+0329                       0308 LODID:
+0329 43                    0309 	INC	BX
+032A E8 18 FF              0310 	CALL	GETCH
+032D E8 DE FF              0311 	CALL	IDCHK
+0330 72 06                 0312 	JC	RWCHK
+0332 88 07                 0313 	MOV	[BX],AL
+0334 FE C5                 0314 	INC	CH
+0336 EB F1                 0315 	JP	LODID
+0338                       0316 RWCHK:
+0338 9F                    0317 	LAHF
+0339 86 E0                 0318 	XCHG	AH,AL
+033B 50                    0319 	PUSH	AX
+033C 86 E0                 0320 	XCHG	AH,AL
+033E 53                    0321 	PUSH	BX
+033F 4B                    0322 	DEC	BX
+0340 FE CD                 0323 	DEC	CH
+0342 8A D5                 0324 	MOV	DL,CH
+0344 74 07                 0325 	JZ	LOOKRW
+0346 8A 17                 0326 	MOV	DL,[BX]
+0348 4B                    0327 	DEC	BX
+0349 FE CD                 0328 	DEC	CH
+034B 75 32                 0329 	JNZ	NORW
+034D                       0330 LOOKRW:
+034D 8A 07                 0331 	MOV	AL,[BX]
+034F 8A F0                 0332 	MOV	DH,AL
+0351 53                    0333 	PUSH	BX
+0352 BB 35 0C              0334 	MOV	BX,RWTAB
+0355 B9 16 00              0335 	MOV	CX,LENRW
+0358                       0336 RWLK:
+0358 FC                    0337 	UP
+0359 8B FB                 0338 	MOV	DI,BX
+035B F2                    0339 	REPNZ
+035C AE                    0340 	SCAB
+035D 8B DF                 0341 	MOV	BX,DI
+035F 75 1D                 0342 	JNZ	NOTRW
+0361 53                    0343 	PUSH	BX
+0362 51                    0344 	PUSH	CX
+0363 B9 15 00              0345 	MOV	CX,LENRW-1
+0366 9F                    0346 	LAHF
+0367 03 D9                 0347 	ADD	BX,CX
+0369 D1 DE                 0348 	RCR	SI
+036B 9E                    0349 	SAHF
+036C D1 D6                 0350 	RCL	SI
+036E 8A 07                 0351 	MOV	AL,[BX]
+0370 59                    0352 	POP	CX
+0371 5B                    0353 	POP	BX
+0372 3A C2                 0354 	CMP	AL,DL
+0374 74 11                 0355 	JZ	HAVRW
+0376 8A C1                 0356 	MOV	AL,CL
+0378 0A C0                 0357 	OR	AL,AL
+037A 8A C6                 0358 	MOV	AL,DH
+037C 75 DA                 0359 	JNZ	RWLK
+037E                       0360 NOTRW:
+037E 5B                    0361 	POP	BX
+037F                       0362 NORW:
+037F 5B                    0363 	POP	BX
+0380                       0364 ENDRW:
+0380 58                    0365 	POP	AX
+0381 86 E0                 0366 	XCHG	AH,AL
+0383 9E                    0367 	SAHF
+0384 E9 6A FF              0368 	JMP	IDRET
+0387                       0369 HAVRW:
+0387 5B                    0370 	POP	BX
+0388 FE C1                 0371 	INC	CL
+038A 88 0F                 0372 	MOV	[BX],CL
+038C 43                    0373 	INC	BX
+038D 5A                    0374 	POP	DX
+038E 53                    0375 	PUSH	BX
+038F 8A C1                 0376 	MOV	AL,CL
+0391 BB 94 0B              0377 	MOV	BX,IXSI
+0394 3C 01                 0378 	CMP	AL,RSI
+0396 74 07                 0379 	JZ	IXIY
+0398 BB A2 0B              0380 	MOV	BX,IYDI
+039B 3C 02                 0381 	CMP	AL,RDI
+039D 75 E0                 0382 	JNZ	NORW
+039F                       0383 IXIY:
+039F 9F                    0384 	LAHF
+03A0 95                    0385 	XCHG	AX,BP
+03A1 9E                    0386 	SAHF
+03A2 74 08                 0387 	JZ	NOTENC
+03A4 9F                    0388 	LAHF
+03A5 95                    0389 	XCHG	AX,BP
+03A6 9E                    0390 	SAHF
+03A7 E8 0C 02              0391 	CALL	OUTSTR
+03AA EB D3                 0392 	JP	NORW
+03AC                       0393 NOTENC:
+03AC 9F                    0394 	LAHF
+03AD 95                    0395 	XCHG	AX,BP
+03AE 9E                    0396 	SAHF
+03AF 5B                    0397 	POP	BX
+03B0 4B                    0398 	DEC	BX
+03B1 C6 07 5B              0399 	MOV	B,[BX],'['
+03B4 43                    0400 	INC	BX
+03B5 04 16                 0401 	ADD	AL,RIX-1
+03B7 88 07                 0402 	MOV	[BX],AL
+03B9 43                    0403 	INC	BX
+03BA C6 07 5D              0404 	MOV	B,[BX],']'
+03BD 43                    0405 	INC	BX
+03BE EB C0                 0406 	JP	ENDRW
+03C0 C3                    0407 	RET
+03C1                       0408 FINDOP:
+03C1 BB 07 0D              0409 	MOV	BX,OPCODE
+03C4 B9 05 00              0410 	MOV	CX,5
+03C7 32 C0                 0411 	XOR	AL,AL
+03C9 FC                    0412 	UP
+03CA 8B FB                 0413 	MOV	DI,BX
+03CC F2                    0414 	REPNZ
+03CD AE                    0415 	SCAB
+03CE 8B DF                 0416 	MOV	BX,DI
+03D0 75 6D                 0417 	JNZ	OPERR
+03D2 B0 04                 0418 	MOV	AL,4
+03D4 2A C1                 0419 	SUB	AL,CL
+03D6 74 E8                 0420 	JZ	RET
+03D8 FE C8                 0421 	DEC	AL
+03DA 74 63                 0422 	JZ	OPERR
+03DC 8A C8                 0423 	MOV	CL,AL
+03DE 4B                    0424 	DEC	BX
+03DF 4B                    0425 	DEC	BX
+03E0 80 0F 80              0426 	OR	B,[BX],080H
+03E3 A0 07 0D              0427 	MOV	AL,[OPCODE]
+03E6 2C 41                 0428 	SUB	AL,'A'
+03E8 72 55                 0429 	JC	OPERR
+03EA 02 C0                 0430 	ADD	AL,AL
+03EC 8A D0                 0431 	MOV	DL,AL
+03EE B6 00                 0432 	MOV	DH,0
+03F0 BB AE 07              0433 	MOV	BX,OPTAB
+03F3 9F                    0434 	LAHF
+03F4 03 DA                 0435 	ADD	BX,DX
+03F6 D1 DE                 0436 	RCR	SI
+03F8 9E                    0437 	SAHF
+03F9 D1 D6                 0438 	RCL	SI
+03FB 8A 17                 0439 	MOV	DL,[BX]
+03FD 43                    0440 	INC	BX
+03FE 8A 37                 0441 	MOV	DH,[BX]
+0400 87 DA                 0442 	XCHG	DX,BX
+0402 B0 09                 0443 	MOV	AL,9
+0404 E8 FF FD              0444 	CALL	PUTCH
+0407                       0445 LOOKOP:
+0407 8A 07                 0446 	MOV	AL,[BX]
+0409 0A C0                 0447 	OR	AL,AL
+040B 74 32                 0448 	JZ	OPERR
+040D BA 08 0D              0449 	MOV	DX,OPCODE+1
+0410 8A E9                 0450 	MOV	CH,CL
+0412                       0451 LOOKLP:
+0412 8B F2                 0452 	MOV	SI,DX
+0414 AC                    0453 	LODB
+0415 3A 07                 0454 	CMP	AL,[BX]
+0417 75 0D                 0455 	JNZ	NEXOP
+0419 42                    0456 	INC	DX
+041A 43                    0457 	INC	BX
+041B FE CD                 0458 	DEC	CH
+041D 75 F3                 0459 	JNZ	LOOKLP
+041F 8B 17                 0460 	MOV	DX,[BX]
+0421 8B 5F 02              0461 	MOV	BX,[BX+2]
+0424 FF E2                 0462 	JMP	DX
+0426                       0463 NEXOP:
+0426 D1 DE                 0464 	RCR	SI
+0428 F6 07 80              0465 	TEST	B,[BX],080H
+042B D1 D6                 0466 	RCL	SI
+042D 9F                    0467 	LAHF
+042E 43                    0468 	INC	BX
+042F 9E                    0469 	SAHF
+0430 74 F4                 0470 	JZ	NEXOP
+0432 BA 04 00              0471 	MOV	DX,4
+0435 9F                    0472 	LAHF
+0436 03 DA                 0473 	ADD	BX,DX
+0438 D1 DE                 0474 	RCR	SI
+043A 9E                    0475 	SAHF
+043B D1 D6                 0476 	RCL	SI
+043D EB C8                 0477 	JP	LOOKOP
+043F                       0478 OPERR:
+043F BB 07 0D              0479 	MOV	BX,OPCODE
+0442 E8 71 01              0480 	CALL	OUTSTR
+0445 E8 37 00              0481 	CALL	TWOOPS
+0448 BB E4 0C              0482 	MOV	BX,OPCDER
+044B E8 68 01              0483 	CALL	OUTSTR
+044E E9 4D FD              0484 	JMP	ENLIN
+0451                       0485 LD:
+0451 E8 62 01              0486 	CALL	OUTSTR
+0454 BB 57 0D              0487 	MOV	BX,OP1
+0457 BA A8 0D              0488 	MOV	DX,OP2+1
+045A E8 3B 00              0489 	CALL	LCHECK
+045D 75 03                 0490 	JNZ	$+5
+045F E9 FF 00              0491 	JMP	LDAX
+0462 87 DA                 0492 	XCHG	DX,BX
+0464 4B                    0493 	DEC	BX
+0465 42                    0494 	INC	DX
+0466 E8 2F 00              0495 	CALL	LCHECK
+0469 75 03                 0496 	JNZ	$+5
+046B E9 01 01              0497 	JMP	STAX
+046E                       0498 ;If immediate move, check for byte memory reference
+046E A0 A7 0D              0499 	MOV	AL,[OP2]
+0471 3C 20                 0500 	CMP	AL,20H		;Could be immediate?
+0473 B0 09                 0501 	MOV	AL,9
+0475 72 03                 0502 	JC	L0001
+0477 E8 D3 02              0503 	CALL	BYTCHK		;Add "B," if memory reference
+047A                       0504 L0001:	
+047A E8 37 00              0505 	CALL	TRAN1
+047D EB 03                 0506 	JP	TRNOP2
+047F                       0507 TWOOPS:
+047F E8 30 00              0508 	CALL	TRNOP1
+0482                       0509 TRNOP2:
+0482 B0 2C                 0510 	MOV	AL,','
+0484                       0511 TRAN2:
+0484 BB A7 0D              0512 	MOV	BX,OP2
+0487                       0513 PTRANS:
+0487 E8 7C FD              0514 	CALL	PUTCH
+048A                       0515 TRANS:
+048A 8A 07                 0516 	MOV	AL,[BX]
+048C 9F                    0517 	LAHF
+048D 43                    0518 	INC	BX
+048E 9E                    0519 	SAHF
+048F 0A C0                 0520 	OR	AL,AL
+0491 74 14                 0521 	JZ	RET
+0493 E8 DE 00              0522 	CALL	TRNTOK
+0496 EB F2                 0523 	JP	TRANS
+0498                       0524 LCHECK:
+0498 8A 07                 0525 	MOV	AL,[BX]
+049A 3C 16                 0526 	CMP	AL,RAL
+049C 75 09                 0527 	JNZ	RET
+049E 8B F2                 0528 	MOV	SI,DX
+04A0 AC                    0529 	LODB
+04A1 3C 0F                 0530 	CMP	AL,RCX
+04A3 74 02                 0531 	JZ	RET
+04A5 3C 0E                 0532 	CMP	AL,RDX
+04A7 C3                    0533 	RET
+04A8                       0534 
+04A8                       0535 ONEOP:
+04A8 E8 0B 01              0536 	CALL	OUTSTR
+04AB B0 09                 0537 	MOV	AL,9
+04AD E8 9D 02              0538 	CALL	BYTCHK		;If memory reference, add "B," flag
+04B0 EB 02                 0539 	JMPS	TRAN1
+04B2                       0540 
+04B2                       0541 TRNOP1:
+04B2 B0 09                 0542 	MOV	AL,9
+04B4                       0543 TRAN1:
+04B4 BB 57 0D              0544 	MOV	BX,OP1
+04B7 EB CE                 0545 	JP	PTRANS
+04B9                       0546 IN:
+04B9 A0 57 0D              0547 	MOV	AL,[OP1]
+04BC 3C 16                 0548 	CMP	AL,RAL
+04BE 87 DA                 0549 	XCHG	DX,BX
+04C0 BB A7 0D              0550 	MOV	BX,OP2
+04C3 74 4E                 0551 	JZ	GETPORT
+04C5 BB B1 0B              0552 	MOV	BX,SAVEAX
+04C8 E8 EB 00              0553 	CALL	OUTSTR
+04CB E8 E8 00              0554 	CALL	OUTSTR
+04CE BB A7 0D              0555 	MOV	BX,OP2
+04D1 E8 3F 00              0556 	CALL	GETPORT
+04D4 BB F7 0B              0557 	MOV	BX,MOV0
+04D7 E8 CE FF              0558 	CALL	ONEOP
+04DA B0 2C                 0559 	MOV	AL,','
+04DC E8 27 FD              0560 	CALL	PUTCH
+04DF B0 16                 0561 	MOV	AL,RAL
+04E1 E8 90 00              0562 	CALL	TRNTOK
+04E4                       0563 IODONE:
+04E4 BB B0 0B              0564 	MOV	BX,RESTAX
+04E7 E9 CC 00              0565 	JMP	OUTSTR
+04EA                       0566 OUT:
+04EA A0 A7 0D              0567 	MOV	AL,[OP2]
+04ED 87 DA                 0568 	XCHG	DX,BX
+04EF BB 57 0D              0569 	MOV	BX,OP1
+04F2 3C 16                 0570 	CMP	AL,RAL
+04F4 74 56                 0571 	JZ	GETOUT
+04F6 BB B1 0B              0572 	MOV	BX,SAVEAX
+04F9 E8 BA 00              0573 	CALL	OUTSTR
+04FC BB 8D 0B              0574 	MOV	BX,MOVAL
+04FF E8 B4 00              0575 	CALL	OUTSTR
+0502 E8 7D FF              0576 	CALL	TRNOP2
+0505 BB BB 0B              0577 	MOV	BX,CRLFTB
+0508 E8 AB 00              0578 	CALL	OUTSTR
+050B BB 57 0D              0579 	MOV	BX,OP1
+050E E8 3B 00              0580 	CALL	GETOUT
+0511 EB D1                 0581 	JP	IODONE
+0513                       0582 GETPORT:
+0513 8A 07                 0583 	MOV	AL,[BX]
+0515 3C 5B                 0584 	CMP	AL,'['
+0517 75 17                 0585 	JNZ	NOBRAK
+0519 9F                    0586 	LAHF
+051A 43                    0587 	INC	BX
+051B 9E                    0588 	SAHF
+051C 53                    0589 	PUSH	BX
+051D B9 50 00              0590 	MOV	CX,80
+0520 B0 5D                 0591 	MOV	AL,']'
+0522 FC                    0592 	UP
+0523 8B FB                 0593 	MOV	DI,BX
+0525 F2                    0594 	REPNZ
+0526 AE                    0595 	SCAB
+0527 8B DF                 0596 	MOV	BX,DI
+0529 9F                    0597 	LAHF
+052A 4B                    0598 	DEC	BX
+052B 9E                    0599 	SAHF
+052C C6 07 00              0600 	MOV	B,[BX],0
+052F 5B                    0601 	POP	BX
+0530                       0602 NOBRAK:
+0530 8A 07                 0603 	MOV	AL,[BX]
+0532 3C 14                 0604 	CMP	AL,RGCL
+0534 75 21                 0605 	JNZ	FIXPOR
+0536 BB 97 0A              0606 	MOV	BX,IO1
+0539 E8 7A 00              0607 	CALL	OUTSTR
+053C 87 DA                 0608 	XCHG	DX,BX
+053E E8 75 00              0609 	CALL	OUTSTR
+0541 B0 0E                 0610 	MOV	AL,RDX
+0543 E8 2E 00              0611 	CALL	TRNTOK
+0546 BB B7 0A              0612 	MOV	BX,IO2
+0549 E9 6A 00              0613 	JMP	OUTSTR
+054C                       0614 GETOUT:
+054C E8 C4 FF              0615 	CALL	GETPORT
+054F 73 76                 0616 	JNC	RET
+0551 BB C1 0A              0617 	MOV	BX,BADIO
+0554 E9 5F 00              0618 	JMP	OUTSTR
+0557                       0619 FIXPOR:
+0557 87 DA                 0620 	XCHG	DX,BX
+0559 E8 5A 00              0621 	CALL	OUTSTR
+055C 87 DA                 0622 	XCHG	DX,BX
+055E E9 29 FF              0623 	JMP	TRANS
+0561                       0624 LDAX:
+0561 BB 5C 09              0625 	MOV	BX,LDAX1
+0564                       0626 LSAX:
+0564 E8 4F 00              0627 	CALL	OUTSTR
+0567 8B F2                 0628 	MOV	SI,DX
+0569 AC                    0629 	LODB
+056A E8 07 00              0630 	CALL	TRNTOK
+056D EB 47                 0631 	JP	OUTSTR
+056F                       0632 STAX:
+056F BB 65 09              0633 	MOV	BX,STAX1
+0572 EB F0                 0634 	JP	LSAX
+0574                       0635 TRNTOK:
+0574 3C 20                 0636 	CMP	AL,' '
+0576 72 03                 0637 	JC	$+5
+0578 E9 8B FC              0638 	JMP	PUTCH
+057B 53                    0639 	PUSH	BX
+057C 51                    0640 	PUSH	CX
+057D 8A C8                 0641 	MOV	CL,AL
+057F B5 00                 0642 	MOV	CH,0
+0581 BB 03 0C              0643 	MOV	BX,TOKTAB-2
+0584 9F                    0644 	LAHF
+0585 03 D9                 0645 	ADD	BX,CX
+0587 D1 DE                 0646 	RCR	SI
+0589 9E                    0647 	SAHF
+058A D1 D6                 0648 	RCL	SI
+058C 9F                    0649 	LAHF
+058D 03 D9                 0650 	ADD	BX,CX
+058F D1 DE                 0651 	RCR	SI
+0591 9E                    0652 	SAHF
+0592 D1 D6                 0653 	RCL	SI
+0594 8A 07                 0654 	MOV	AL,[BX]
+0596 E8 6D FC              0655 	CALL	PUTCH
+0599 43                    0656 	INC	BX
+059A 8A 07                 0657 	MOV	AL,[BX]
+059C 59                    0658 	POP	CX
+059D 5B                    0659 	POP	BX
+059E 0A C0                 0660 	OR	AL,AL
+05A0 74 25                 0661 	JZ	RET
+05A2 E9 61 FC              0662 	JMP	PUTCH
+05A5                       0663 PUSH:
+05A5 BA 6E 09              0664 	MOV	DX,PUSHAF
+05A8 EB 03                 0665 	JP	AFCHK
+05AA                       0666 POP:
+05AA BA 90 09              0667 	MOV	DX,POPAF
+05AD                       0668 AFCHK:
+05AD A0 57 0D              0669 	MOV	AL,[OP1]
+05B0 3C 0B                 0670 	CMP	AL,RAX
+05B2 75 61                 0671 	JNZ	ONEOPJ
+05B4 87 DA                 0672 	XCHG	DX,BX
+05B6                       0673 OUTSTR:
+05B6 8A 07                 0674 	MOV	AL,[BX]
+05B8 0A C0                 0675 	OR	AL,AL
+05BA 75 03                 0676 	JNZ	L0002
+05BC E8 09 00              0677 	CALL	NEWOP
+05BF                       0678 L0002:	
+05BF E8 44 FC              0679 	CALL	PUTCH
+05C2 43                    0680 	INC	BX
+05C3 02 C0                 0681 	ADD	AL,AL
+05C5 73 EF                 0682 	JNC	OUTSTR
+05C7 C3                    0683 	RET
+05C8                       0684 NEWOP:
+05C8 B0 0D                 0685 	MOV	AL,13
+05CA E8 39 FC              0686 	CALL	PUTCH
+05CD B0 0A                 0687 	MOV	AL,10
+05CF E8 34 FC              0688 	CALL	PUTCH
+05D2 B0 09                 0689 	MOV	AL,9
+05D4 C3                    0690 	RET
+05D5                       0691 LDDR:
+05D5 E8 DE FF              0692 	CALL	OUTSTR
+05D8 BB AC 09              0693 	MOV	BX,BLMOVE
+05DB EB D9                 0694 	JP	OUTSTR
+05DD                       0695 CPDR:
+05DD E8 D6 FF              0696 	CALL	OUTSTR
+05E0 BB DF 09              0697 	MOV	BX,CMPREP
+05E3 EB D1                 0698 	JP	OUTSTR
+05E5                       0699 ADD:
+05E5 A0 57 0D              0700 	MOV	AL,[OP1]
+05E8 3C 0D                 0701 	CMP	AL,RBX
+05EA 74 2C                 0702 	JZ	DAD
+05EC                       0703 ARITH:
+05EC E8 C7 FF              0704 	CALL	OUTSTR
+05EF A0 A7 0D              0705 	MOV	AL,[OP2]
+05F2 0A C0                 0706 	OR	AL,AL
+05F4 74 03                 0707 	JZ	$+5
+05F6 E9 86 FE              0708 	JMP	TWOOPS
+05F9 B0 09                 0709 	MOV	AL,9
+05FB E8 08 FC              0710 	CALL	PUTCH
+05FE B0 16                 0711 	MOV	AL,RAL
+0600 E8 71 FF              0712 	CALL	TRNTOK
+0603 B0 2C                 0713 	MOV	AL,','
+0605 E9 AC FE              0714 	JMP	TRAN1
+0608                       0715 ACCUM:
+0608 E8 AB FF              0716 	CALL	OUTSTR
+060B B0 09                 0717 	MOV	AL,9
+060D E8 F6 FB              0718 	CALL	PUTCH
+0610 B0 16                 0719 	MOV	AL,RAL
+0612 E9 5F FF              0720 	JMP	TRNTOK
+0615 E9 90 FE              0721 ONEOPJ:	JMP	ONEOP
+0618                       0722 DAD:
+0618 BB FE 09              0723 	MOV	BX,DAD1
+061B E8 98 FF              0724 	CALL	OUTSTR
+061E E8 5E FE              0725 	CALL	TWOOPS
+0621 BB 06 0A              0726 	MOV	BX,DAD2
+0624 EB 90                 0727 	JP	OUTSTR
+0626                       0728 
+0626                       0729 INCDEC:
+0626 A0 57 0D              0730 	MOV	AL,[OP1]
+0629 3C 10                 0731 	CMP	AL,RCX+1	;16-bit?
+062B 73 E8                 0732 	JNC	ONEOPJ
+062D BB 19 0A              0733 	MOV	BX,LAHF
+0630 E8 83 FF              0734 	CALL	OUTSTR
+0633 87 DA                 0735 	XCHG	DX,BX
+0635 BB 06 0D              0736 	MOV	BX,OPCODE-1
+0638 E8 6D FE              0737 	CALL	ONEOP
+063B 87 DA                 0738 	XCHG	DX,BX
+063D                       0739 OUTSTRJ:
+063D E9 76 FF              0740 	JMP	OUTSTR
+0640                       0741 JUMP:
+0640 A0 57 0D              0742 	MOV	AL,[OP1]
+0643 3C 5B                 0743 	CMP	AL,'['
+0645 75 0B                 0744 	JNZ	DIRECT
+0647 A0 58 0D              0745 	MOV	AL,[OP1+1]
+064A A2 57 0D              0746 	MOV	[OP1],AL
+064D 32 C0                 0747 	XOR	AL,AL
+064F A2 58 0D              0748 	MOV	[OP1+1],AL
+0652                       0749 DIRECT:
+0652 A0 A7 0D              0750 	MOV	AL,[OP2]
+0655 0A C0                 0751 	OR	AL,AL
+0657 74 BC                 0752 	JZ	ONEOPJ
+0659 E8 22 00              0753 	CALL	FIXCON
+065C BB A7 0D              0754 	MOV	BX,OP2
+065F                       0755 OUTCON:
+065F 8A E8                 0756 	MOV	CH,AL
+0661 B0 4A                 0757 	MOV	AL,'J'
+0663 E8 A0 FB              0758 	CALL	PUTCH
+0666 8A C5                 0759 	MOV	AL,CH
+0668 E8 09 FF              0760 	CALL	TRNTOK
+066B B0 09                 0761 	MOV	AL,9
+066D E8 17 FE              0762 	CALL	PTRANS
+0670 8A C5                 0763 	MOV	AL,CH
+0672 3C 03                 0764 	CMP	AL,ODDPAR
+0674 BB 63 0A              0765 	MOV	BX,WARNPA
+0677 74 C4                 0766 	JZ	OUTSTRJ
+0679 3C 04                 0767 	CMP	AL,EVEPAR
+067B 74 C0                 0768 	JZ	OUTSTRJ
+067D C3                    0769 	RET
+067E                       0770 FIXCON:
+067E A0 57 0D              0771 	MOV	AL,[OP1]
+0681 3C 14                 0772 	CMP	AL,RGCL
+0683 75 F8                 0773 	JNZ	RET
+0685 B0 0A                 0774 	MOV	AL,CY
+0687 C3                    0775 	RET
+0688                       0776 RETURN:
+0688 A0 57 0D              0777 	MOV	AL,[OP1]
+068B 0A C0                 0778 	OR	AL,AL
+068D 74 AE                 0779 	JZ	OUTSTRJ
+068F BB 52 45              0780 	MOV	BX,'R'+4500H	;"RE"
+0692 89 1E A7 0D           0781 	MOV	[OP2],BX
+0696 BB 54 00              0782 	MOV	BX,'T'
+0699 89 1E A9 0D           0783 	MOV	[OP2+2],BX
+069D EB B3                 0784 	JP	DIRECT
+069F                       0785 ONEOPJ1:
+069F E9 06 FE              0786 	JMP	ONEOP
+06A2                       0787 DOCALL:
+06A2 A0 A7 0D              0788 	MOV	AL,[OP2]
+06A5 0A C0                 0789 	OR	AL,AL
+06A7 74 F6                 0790 	JZ	ONEOPJ1
+06A9 E8 D2 FF              0791 	CALL	FIXCON
+06AC FE C8                 0792 	DEC	AL
+06AE 34 01                 0793 	XOR	AL,1
+06B0 FE C0                 0794 	INC	AL
+06B2 BB F9 0C              0795 	MOV	BX,LABEL
+06B5 E8 A7 FF              0796 	CALL	OUTCON
+06B8 BB 06 0D              0797 	MOV	BX,OPCODE-1
+06BB E8 F8 FE              0798 	CALL	OUTSTR
+06BE A0 A7 0D              0799 	MOV	AL,[OP2]
+06C1 0A C0                 0800 	OR	AL,AL
+06C3 B0 09                 0801 	MOV	AL,9
+06C5 BB A7 0D              0802 	MOV	BX,OP2
+06C8 74 03                 0803 	JZ	L0003
+06CA E8 BA FD              0804 	CALL	PTRANS
+06CD                       0805 L0003:	
+06CD BB F7 0C              0806 	MOV	BX,CRLF
+06D0 E8 E3 FE              0807 	CALL	OUTSTR
+06D3 E8 B4 FD              0808 	CALL	TRANS
+06D6 E8 DD FE              0809 	CALL	OUTSTR
+06D9 BB FD 0C              0810 	MOV	BX,LABEL+4
+06DC                       0811 NEXLAB:
+06DC FF 07                 0812 	INC	[BX]
+06DE 8A 07                 0813 	MOV	AL,[BX]
+06E0 3C 3A                 0814 	CMP	AL,'9'+1
+06E2 75 A3                 0815 	JNZ	RET
+06E4 C6 07 30              0816 	MOV	B,[BX],'0'
+06E7 9F                    0817 	LAHF
+06E8 4B                    0818 	DEC	BX
+06E9 9E                    0819 	SAHF
+06EA EB F0                 0820 	JP	NEXLAB
+06EC                       0821 EX:
+06EC A0 57 0D              0822 	MOV	AL,[OP1]
+06EF 3C 0B                 0823 	CMP	AL,RAX
+06F1 74 1C                 0824 	JZ	OUTSTRJ1
+06F3 A0 58 0D              0825 	MOV	AL,[OP1+1]
+06F6 3C 0C                 0826 	CMP	AL,STP
+06F8 74 09                 0827 	JZ	XTHL
+06FA BB C7 0B              0828 	MOV	BX,XCHG
+06FD E8 B6 FE              0829 	CALL	OUTSTR
+0700 E9 7C FD              0830 	JMP	TWOOPS
+0703                       0831 XTHL:
+0703 BB 3D 0B              0832 	MOV	BX,XTHL1
+0706 E8 AD FE              0833 	CALL	OUTSTR
+0709 E8 76 FD              0834 	CALL	TRNOP2
+070C BB 4B 0B              0835 	MOV	BX,XTHL2
+070F                       0836 OUTSTRJ1:
+070F E9 A4 FE              0837 	JMP	OUTSTR
+0712                       0838 PSEUDO:
+0712 E8 93 FD              0839 	CALL	ONEOP
+0715 A0 A7 0D              0840 	MOV	AL,[OP2]
+0718 0A C0                 0841 	OR	AL,AL
+071A 74 03                 0842 	JZ	RET
+071C E9 63 FD              0843 	JMP	TRNOP2
+071F C3                    0844 	RET
+0720                       0845 BITSET:
+0720 B1 00                 0846 	MOV	CL,0
+0722 EB 02                 0847 	JP	SETRES
+0724                       0848 RES:
+0724 B1 FF                 0849 	MOV	CL,-1
+0726                       0850 SETRES:
+0726 E8 8D FE              0851 	CALL	OUTSTR
+0729 53                    0852 	PUSH	BX
+072A A0 A7 0D              0853 	MOV	AL,[OP2]
+072D 3C 5B                 0854 	CMP	AL,'['
+072F B0 09                 0855 	MOV	AL,9
+0731 75 03                 0856 	JNZ	L0004
+0733 E8 2C 00              0857 	CALL	BFLAG
+0736                       0858 L0004:	
+0736 E8 4B FD              0859 	CALL	TRAN2
+0739 B0 2C                 0860 	MOV	AL,','
+073B E8 C8 FA              0861 	CALL	PUTCH
+073E E8 2C 00              0862 	CALL	GETBIT
+0741 BB E8 0A              0863 	MOV	BX,BITERR
+0744 73 03                 0864 	JNC	L0005
+0746 E8 6D FE              0865 	CALL	OUTSTR
+0749                       0866 L0005:	
+0749 5B                    0867 	POP	BX
+074A E9 69 FE              0868 	JMP	OUTSTR
+074D                       0869 
+074D                       0870 BYTCHK:
+074D                       0871 ;Check if memory reference and add "B," for byte mode
+074D 82 3E 57 0D 5B        0872 	CMP	B,[OP1],"["	;Memory reference?
+0752 75 CB                 0873 	JNZ	RET
+0754 80 3E 58 0D 17        0874 	CMP	B,[OP1+1],RIX	;Referencing IX as a word?
+0759 74 C4                 0875 	JZ	RET
+075B 80 3E 58 0D 18        0876 	CMP	B,[OP1+1],RIY
+0760 74 BD                 0877 	JZ	RET
+0762                       0878 BFLAG:
+0762 E8 A1 FA              0879 	CALL	PUTCH
+0765 B0 42                 0880 	MOV	AL,'B'
+0767 E8 9C FA              0881 	CALL	PUTCH
+076A B0 2C                 0882 	MOV	AL,','
+076C C3                    0883 	RET
+076D                       0884 
+076D                       0885 GETBIT:
+076D A0 58 0D              0886 	MOV	AL,[OP1+1]
+0770 0A C0                 0887 	OR	AL,AL
+0772 F9                    0888 	STC
+0773 75 F7                 0889 	JNZ	RET
+0775 A0 57 0D              0890 	MOV	AL,[OP1]
+0778 2C 30                 0891 	SUB	AL,'0'
+077A 72 F0                 0892 	JC	RET
+077C 3C 08                 0893 	CMP	AL,8
+077E F5                    0894 	CMC
+077F 72 EB                 0895 	JC	RET
+0781 8A E8                 0896 	MOV	CH,AL
+0783 FE C5                 0897 	INC	CH
+0785 32 C0                 0898 	XOR	AL,AL
+0787 F9                    0899 	STC
+0788                       0900 SHFT:
+0788 D0 D0                 0901 	RCL	AL
+078A FE CD                 0902 	DEC	CH
+078C 75 FA                 0903 	JNZ	SHFT
+078E 32 C1                 0904 	XOR	AL,CL
+0790 8A E8                 0905 	MOV	CH,AL
+0792 B0 30                 0906 	MOV	AL,'0'
+0794 E8 6F FA              0907 	CALL	PUTCH
+0797 8A C5                 0908 	MOV	AL,CH
+0799 D0 D8                 0909 	RCR	AL
+079B D0 D8                 0910 	RCR	AL
+079D D0 D8                 0911 	RCR	AL
+079F D0 D8                 0912 	RCR	AL
+07A1 E8 5A FA              0913 	CALL	HEX
+07A4 8A C5                 0914 	MOV	AL,CH
+07A6 E8 55 FA              0915 	CALL	HEX
+07A9 B0 48                 0916 	MOV	AL,'H'
+07AB E9 58 FA              0917 	JMP	PUTCH
+07AE                       0918 OPTAB:
+07AE E2 07 F5 07 FC 07 23  0919 	DW	AOPS,BOPS,COPS,DOPS,EOPS
+     08 50 08             
+07B8 6F 08 70 08 71 08 79  0920 	DW	FOPS,GOPS,HOPS,IOPS,JOPS
+     08 8A 08             
+07C2 95 08 96 08 AA 08 AB  0921 	DW	KOPS,LOPS,MOPS,NOPS,OOPS
+     08 B2 08             
+07CC C4 08 D2 08 D3 08 24  0922 	DW	POPS,QOPS,ROPS,SOPS,TOPS
+     09 4F 09             
+07D6 50 09 51 09 52 09 53  0923 	DW	UOPS,VOPS,WOPS,XOPS,YOPS
+     09 5A 09             
+07E0 5B 09                 0924 	DW	ZOPS
+07E2                       0925 AOPS:
+07E2 44 C4                 0926 	DM	'DD'
+07E4 E5 05 07 0D           0927 	DW	ADD,OPCODE
+07E8 44 C3                 0928 	DM	'DC'
+07EA EC 05 07 0D           0929 	DW	ARITH,OPCODE
+07EE 4E C4                 0930 	DM	'ND'
+07F0 EC 05 07 0D           0931 	DW	ARITH,OPCODE
+07F4 00                    0932 	DB	0
+07F5                       0933 BOPS:
+07F5 49 D4                 0934 	DM	'IT'
+07F7 20 07 2B 0B           0935 	DW	BITSET,TESBIT
+07FB 00                    0936 	DB	0
+07FC                       0937 COPS:
+07FC 41 4C CC              0938 	DM	'ALL'
+07FF A2 06 07 0D           0939 	DW	DOCALL,OPCODE
+0803 D0                    0940 	DM	'P'
+0804 EC 05 FB 0B           0941 	DW	ARITH,CMP
+0808 50 CC                 0942 	DM	'PL'
+080A 08 06 F4 0B           0943 	DW	ACCUM,NOT
+080E 50 49 D2              0944 	DM	'PIR'
+0811 B6 05 DD 09           0945 	DW	OUTSTR,CPIR
+0815 50 44 D2              0946 	DM	'PDR'
+0818 DD 05 A6 09           0947 	DW	CPDR,DOWN
+081C 43 C6                 0948 	DM	'CF'
+081E B6 05 F1 0B           0949 	DW	OUTSTR,CMC
+0822 00                    0950 	DB	0
+0823                       0951 DOPS:
+0823 45 C3                 0952 	DM	'EC'
+0825 26 06 07 0D           0953 	DW	INCDEC,OPCODE
+0829 4A 4E DA              0954 	DM	'JNZ'
+082C A8 04 22 0A           0955 	DW	ONEOP,DJNZ
+0830 41 C1                 0956 	DM	'AA'
+0832 B6 05 07 0D           0957 	DW	OUTSTR,OPCODE
+0836 C9                    0958 	DM	'I'
+0837 B6 05 07 0D           0959 	DW	OUTSTR,OPCODE
+083B D7                    0960 	DM	'W'
+083C 12 07 07 0D           0961 	DW	PSEUDO,OPCODE
+0840 C2                    0962 	DM	'B'
+0841 12 07 07 0D           0963 	DW	PSEUDO,OPCODE
+0845 CD                    0964 	DM	'M'
+0846 12 07 07 0D           0965 	DW	PSEUDO,OPCODE
+084A D3                    0966 	DM	'S'
+084B A8 04 07 0D           0967 	DW	ONEOP,OPCODE
+084F 00                    0968 	DB	0
+0850                       0969 EOPS:
+0850 D8                    0970 	DM	'X'
+0851 EC 06 79 0B           0971 	DW	EX,EXAF
+0855 C9                    0972 	DM	'I'
+0856 B6 05 07 0D           0973 	DW	OUTSTR,OPCODE
+085A 58 D8                 0974 	DM	'XX'
+085C B6 05 53 0B           0975 	DW	OUTSTR,EXX
+0860 51 D5                 0976 	DM	'QU'
+0862 A8 04 07 0D           0977 	DW	ONEOP,OPCODE
+0866 4E 44 49 C6           0978 	DM	'NDIF'
+086A B6 05 07 0D           0979 	DW	OUTSTR,OPCODE
+086E 00                    0980 	DB	0
+086F                       0981 FOPS:
+086F 00                    0982 	DB	0
+0870                       0983 GOPS:
+0870 00                    0984 	DB	0
+0871                       0985 HOPS:
+0871 41 4C D4              0986 	DM	'ALT'
+0874 B6 05 EE 0B           0987 	DW	OUTSTR,HLT
+0878 00                    0988 	DB	0
+0879                       0989 IOPS:
+0879 4E C3                 0990 	DM	'NC'
+087B 26 06 07 0D           0991 	DW	INCDEC,OPCODE
+087F CE                    0992 	DM	'N'
+0880 B9 04 BE 0B           0993 	DW	IN,INB
+0884 C6                    0994 	DM	'F'
+0885 A8 04 07 0D           0995 	DW	ONEOP,OPCODE
+0889 00                    0996 	DB	0
+088A                       0997 JOPS:
+088A D2                    0998 	DM	'R'
+088B 40 06 CE 0B           0999 	DW	JUMP,JR
+088F D0                    1000 	DM	'P'
+0890 40 06 CB 0B           1001 	DW	JUMP,JMP
+0894 00                    1002 	DB	0
+0895                       1003 KOPS:
+0895 00                    1004 	DB	0
+0896                       1005 LOPS:
+0896 C4                    1006 	DM	'D'
+0897 51 04 F8 0B           1007 	DW	LD,MOV
+089B 44 49 D2              1008 	DM	'DIR'
+089E B6 05 AA 09           1009 	DW	OUTSTR,UP
+08A2 44 44 D2              1010 	DM	'DDR'
+08A5 D5 05 A6 09           1011 	DW	LDDR,DOWN
+08A9 00                    1012 	DB	0
+08AA                       1013 MOPS:
+08AA 00                    1014 	DB	0
+08AB                       1015 NOPS:
+08AB 45 C7                 1016 	DM	'EG'
+08AD 08 06 07 0D           1017 	DW	ACCUM,OPCODE
+08B1 00                    1018 	DB	0
+08B2                       1019 OOPS:
+08B2 D2                    1020 	DM	'R'
+08B3 EC 05 07 0D           1021 	DW	ARITH,OPCODE
+08B7 55 D4                 1022 	DM	'UT'
+08B9 EA 04 C2 0B           1023 	DW	OUT,OUTB
+08BD 52 C7                 1024 	DM	'RG'
+08BF A8 04 07 0D           1025 	DW	ONEOP,OPCODE
+08C3 00                    1026 	DB	0
+08C4                       1027 POPS:
+08C4 4F D0                 1028 	DM	'OP'
+08C6 AA 05 07 0D           1029 	DW	POP,OPCODE
+08CA 55 53 C8              1030 	DM	'USH'
+08CD A5 05 07 0D           1031 	DW	PUSH,OPCODE
+08D1 00                    1032 	DB	0
+08D2                       1033 QOPS:
+08D2 00                    1034 	DB	0
+08D3                       1035 ROPS:
+08D3 45 D4                 1036 	DM	'ET'
+08D5 88 06 07 0D           1037 	DW	RETURN,OPCODE
+08D9 4C C1                 1038 	DM	'LA'
+08DB 08 06 D2 0B           1039 	DW	ACCUM,RCL
+08DF 52 C1                 1040 	DM	'RA'
+08E1 08 06 D5 0B           1041 	DW	ACCUM,RCR
+08E5 4C 43 C1              1042 	DM	'LCA'
+08E8 08 06 D8 0B           1043 	DW	ACCUM,ROL
+08EC 52 43 C1              1044 	DM	'RCA'
+08EF 08 06 DB 0B           1045 	DW	ACCUM,ROR
+08F3 CC                    1046 	DM	'L'
+08F4 A8 04 D2 0B           1047 	DW	ONEOP,RCL
+08F8 D2                    1048 	DM	'R'
+08F9 A8 04 D5 0B           1049 	DW	ONEOP,RCR
+08FD 4C C3                 1050 	DM	'LC'
+08FF A8 04 D8 0B           1051 	DW	ONEOP,ROL
+0903 52 C3                 1052 	DM	'RC'
+0905 A8 04 DB 0B           1053 	DW	ONEOP,ROR
+0909 45 D3                 1054 	DM	'ES'
+090B 24 07 1E 0B           1055 	DW	RES,RESBIT
+090F 45 54 C9              1056 	DM	'ETI'
+0912 B6 05 EA 0B           1057 	DW	OUTSTR,IRET
+0916 45 54 CE              1058 	DM	'ETN'
+0919 B6 05 EA 0B           1059 	DW	OUTSTR,IRET
+091D 53 D4                 1060 	DM	'ST'
+091F A8 04 01 0C           1061 	DW	ONEOP,CALL
+0923 00                    1062 	DB	0
+0924                       1063 SOPS:
+0924 55 C2                 1064 	DM	'UB'
+0926 EC 05 07 0D           1065 	DW	ARITH,OPCODE
+092A 42 C3                 1066 	DM	'BC'
+092C EC 05 FE 0B           1067 	DW	ARITH,SBB
+0930 4C C1                 1068 	DM	'LA'
+0932 A8 04 DE 0B           1069 	DW	ONEOP,SAL
+0936 52 C1                 1070 	DM	'RA'
+0938 A8 04 E1 0B           1071 	DW	ONEOP,SAR
+093C 52 CC                 1072 	DM	'RL'
+093E A8 04 E4 0B           1073 	DW	ONEOP,SHR
+0942 43 C6                 1074 	DM	'CF'
+0944 B6 05 E7 0B           1075 	DW	OUTSTR,STC
+0948 45 D4                 1076 	DM	'ET'
+094A 20 07 12 0B           1077 	DW	BITSET,SETBIT
+094E 00                    1078 	DB	0
+094F                       1079 TOPS:
+094F 00                    1080 	DB	0
+0950                       1081 UOPS:
+0950 00                    1082 	DB	0
+0951                       1083 VOPS:
+0951 00                    1084 	DB	0
+0952                       1085 WOPS:
+0952 00                    1086 	DB	0
+0953                       1087 XOPS:
+0953 4F D2                 1088 	DM	'OR'
+0955 EC 05 07 0D           1089 	DW	ARITH,OPCODE
+0959 00                    1090 	DB	0
+095A                       1091 YOPS:
+095A 00                    1092 	DB	0
+095B                       1093 ZOPS:
+095B 00                    1094 	DB	0
+095C 09 53 49 AC           1095 LDAX1:	DM	9,'SI,'
+0960 00 4C 4F 44 C2        1096 	DM	0,'LODB'
+0965 09 44 49 AC           1097 STAX1:	DM	9,'DI,'
+0969 00 53 54 4F C2        1098 	DM	0,'STOB'
+096E 4C 41 48 46 00 58 43  1099 PUSHAF:	DB	'LAHF',0,'XCHG',9,'AH,AL',0,'PUSH',9,'AX',0
+     48 47 09 41 48 2C 41 
+     4C 00 50 55 53 48 09 
+     41 58 00             
+0986 58 43 48 47 09 41 48  1100 	DM	'XCHG',9,'AH,AL'
+     2C 41 CC             
+0990 50 4F 50 09 41 58 00  1101 POPAF:	DM	'POP',9,'AX',0,'XCHG',9,'AH,AL',0,'SAHF'
+     58 43 48 47 09 41 48 
+     2C 41 4C 00 53 41 48 
+     C6                   
+09A6 44 4F 57 CE           1102 DOWN:	DM	'DOWN'
+09AA 55 50                 1103 UP:	DB	'UP'
+09AC 00 4D 4F 56 09 53 49  1104 BLMOVE:	DB	0,'MOV',9,'SI,BX',0,'MOV',9,'DI,DX'
+     2C 42 58 00 4D 4F 56 
+     09 44 49 2C 44 58    
+09C0 00 52 45 50 00 4D 4F  1105 	DB	0,'REP',0,'MOVB',0,'MOV',9,'DX,DI'
+     56 42 00 4D 4F 56 09 
+     44 58 2C 44 49       
+09D3 00 4D 4F 56 09 42 58  1106 	DM	0,'MOV',9,'BX,SI'
+     2C 53 C9             
+09DD 55 50                 1107 CPIR:	DB	'UP'
+09DF 00 4D 4F 56 09 44 49  1108 CMPREP:	DB	0,'MOV',9,'DI,BX',0,'REPNZ',0,'SCAB'
+     2C 42 58 00 52 45 50 
+     4E 5A 00 53 43 41 42 
+09F4 00 4D 4F 56 09 42 58  1109 	DM	0,'MOV',9,'BX,DI'
+     2C 44 C9             
+09FE 4C 41 48 46 00 41 44  1110 DAD1:	DM	'LAHF',0,'ADD'
+     C4                   
+0A06 00 52 43 52 09 53 49  1111 DAD2:	DM	0,'RCR',9,'SI',0,'SAHF',0,'RCL',9,'SI'
+     00 53 41 48 46 00 52 
+     43 4C 09 53 C9       
+0A19 4C 41 48 C6           1112 LAHF:	DM	'LAHF'
+0A1D 00 53 41 48 C6        1113 	DM	0,'SAHF'
+0A22 44 45 43 09 43 48 0D  1114 DJNZ:	DB	'DEC',9,'CH',13,10
+     0A                   
+0A2A 3B 20 2A 2A 2A 20 57  1115 	DB	'; *** WARNING: DJNZ does not affect flags - DEC does.',0
+     41 52 4E 49 4E 47 3A 
+     20 44 4A 4E 5A 20 64 
+     6F 65 73 20 6E 6F 74 
+     20 61 66 66 65 63 74 
+     20 66 6C 61 67 73 20 
+     2D 20 44 45 43 20 64 
+     6F 65 73 2E 00       
+0A60 4A 4E DA              1116 	DM	'JNZ'
+0A63 0D 0A 3B 20 2A 2A 2A  1117 WARNPA:	DM	13,10,'; *** WARNING: Parity flag not always same as Z80.'
+     20 57 41 52 4E 49 4E 
+     47 3A 20 50 61 72 69 
+     74 79 20 66 6C 61 67 
+     20 6E 6F 74 20 61 6C 
+     77 61 79 73 20 73 61 
+     6D 65 20 61 73 20 5A 
+     38 30 AE             
+0A97 4D 4F 56 09 44 49 2C  1118 IO1:	DB	'MOV',9,'DI,DX',0,'MOV',9,'DL,CL',0
+     44 58 00 4D 4F 56 09 
+     44 4C 2C 43 4C 00    
+0AAB 58 4F 52 09 44 48 2C  1119 	DM	'XOR',9,'DH,DH',13,10,9
+     44 48 0D 0A 89       
+0AB7 00 4D 4F 56 09 44 58  1120 IO2:	DM	0,'MOV',9,'DX,DI'
+     2C 44 C9             
+0AC1 0D 0A 3B 20 2A 2A 2A  1121 BADIO:	DM	13,10,'; *** WARNING: Flags not same as Z80.'
+     20 57 41 52 4E 49 4E 
+     47 3A 20 46 6C 61 67 
+     73 20 6E 6F 74 20 73 
+     61 6D 65 20 61 73 20 
+     5A 38 30 AE          
+0AE8 0D 0A 20 2A 2A 2A 20  1122 BITERR:	DM	13,10,' *** ERROR: Cannot determine bit number.'
+     45 52 52 4F 52 3A 20 
+     43 61 6E 6E 6F 74 20 
+     64 65 74 65 72 6D 69 
+     6E 65 20 62 69 74 20 
+     6E 75 6D 62 65 72 AE 
+0B12 4C 41 48 46 00 4F D2  1123 SETBIT:	DM	'LAHF',0,'OR'
+0B19 00 53 41 48 C6        1124 	DM	0,'SAHF'
+0B1E 4C 41 48 46 00 41 4E  1125 RESBIT:	DM	'LAHF',0,'AND'
+     C4                   
+0B26 00 53 41 48 C6        1126 	DM	0,'SAHF'
+0B2B 52 43 52 09 41 48 00  1127 TESBIT:	DM	'RCR',9,'AH',0,'TEST'
+     54 45 53 D4          
+0B36 00 52 43 4C 09 41 C8  1128 	DM	0,'RCL',9,'AH'
+0B3D 50 4F 50 09 53 49 00  1129 XTHL1:	DM	'POP',9,'SI',0,'XCHG',9,'SI'
+     58 43 48 47 09 53 C9 
+0B4B 00 50 55 53 48 09 53  1130 XTHL2:	DM	0,'PUSH',9,'SI'
+     C9                   
+0B53 58 43 48 47 09 42 58  1131 EXX:	DB	'XCHG',9,'BX,[HL]',0,'XCHG',9,'DX,[DE]',0
+     2C 5B 48 4C 5D 00 58 
+     43 48 47 09 44 58 2C 
+     5B 44 45 5D 00       
+0B6D 58 43 48 47 09 43 58  1132 	DM	'XCHG',9,'CX,[BC]'
+     2C 5B 42 43 DD       
+0B79 4C 41 48 46 00 58 43  1133 EXAF:	DM	'LAHF',0,'XCHG',9,'AX,BP',0,'SAHF'
+     48 47 09 41 58 2C 42 
+     50 00 53 41 48 C6    
+0B8D 00 4D 4F 56 09 41 CC  1134 MOVAL:	DM	0,'MOV',9,'AL'
+0B94 09 4D 4F 56 09 53 49  1135 IXSI:	DM	9,'MOV',9,'SI,[IX]',13,10
+     2C 5B 49 58 5D 0D 8A 
+0BA2 09 4D 4F 56 09 44 49  1136 IYDI:	DM	9,'MOV',9,'DI,[IY]',13,10
+     2C 5B 49 59 5D 0D 8A 
+0BB0 00                    1137 RESTAX:	DB	0
+0BB1 58 43 48 47 09 41 58  1138 SAVEAX:	DM	'XCHG',9,'AX,SI'
+     2C 53 C9             
+0BBB 0D 0A 89              1139 CRLFTB:	DM	13,10,9
+0BBE 49 4E 42 89           1140 INB:	DM	'INB',9
+0BC2 4F 55 54 42 89        1141 OUTB:	DM	'OUTB',9
+0BC7 58 43 48 C7           1142 XCHG:	DM	'XCHG'
+0BCB 4A 4D D0              1143 JMP:	DM	'JMP'
+0BCE 4A 4D 50 D3           1144 JR:	DM	'JMPS'
+0BD2 52 43 CC              1145 RCL:	DM	'RCL'
+0BD5 52 43 D2              1146 RCR:	DM	'RCR'
+0BD8 52 4F CC              1147 ROL:	DM	'ROL'
+0BDB 52 4F D2              1148 ROR:	DM	'ROR'
+0BDE 53 41 CC              1149 SAL:	DM	'SAL'
+0BE1 53 41 D2              1150 SAR:	DM	'SAR'
+0BE4 53 48 D2              1151 SHR:	DM	'SHR'
+0BE7 53 54 C3              1152 STC:	DM	'STC'
+0BEA 49 52 45 D4           1153 IRET:	DM	'IRET'
+0BEE 48 4C D4              1154 HLT:	DM	'HLT'
+0BF1 43 4D C3              1155 CMC:	DM	'CMC'
+0BF4 4E 4F D4              1156 NOT:	DM	'NOT'
+0BF7 00                    1157 MOV0:	DB	0
+0BF8 4D 4F D6              1158 MOV:	DM	'MOV'
+0BFB 43 4D D0              1159 CMP:	DM	'CMP'
+0BFE 53 42 C2              1160 SBB:	DM	'SBB'
+0C01 43 41 4C CC           1161 CALL:	DM	'CALL'
+0C05                       1162 TOKTAB:
+0C05 53 49 44 49           1163 	DB	'SIDI'
+0C09 50 45 50 4F 53 00 4E  1164 	DB	'PEPOS',0,'NSNZZ',0,'NCC',0
+     53 4E 5A 5A 00 4E 43 
+     43 00                
+0C19 41 58 53 50 42 58 44  1165 	DB	'AXSPBXDXCX'
+     58 43 58             
+0C23 42 4C 42 48 44 4C 44  1166 	DB	'BLBHDLDHCLCHALIXIY'
+     48 43 4C 43 48 41 4C 
+     49 58 49 59          
+0C35                       1167 RWTAB:
+0C35 41 42 43 44 45 48 4C  1168 	DB	'ABCDEHLBDHSACNZNPMPPII'
+     42 44 48 53 41 43 4E 
+     5A 4E 50 4D 50 50 49 
+     49                   
+0C4B                       1169 LENRW:	EQU	$-RWTAB
+0C4B 00 00 00 00 00 00 00  1170 	DB	0,0,0,0,0,0,0,'CELPF',0,'C',0,'Z',0,0,'OEYX'
+     43 45 4C 50 46 00 43 
+     00 5A 00 00 4F 45 59 
+     58                   
+0C61 0D 0A 5A 38 30 20 74  1171 HEADER:	DB	13,10,'Z80 to 8086 Translator  version 2.21',13,10,'$'
+     6F 20 38 30 38 36 20 
+     54 72 61 6E 73 6C 61 
+     74 6F 72 20 20 76 65 
+     72 73 69 6F 6E 20 32 
+     2E 32 31 0D 0A 24    
+0C8A 0D 0A 46 69 6C 65 20  1172 NOROOM:	DB	13,10,'File creation error',13,10,'$'
+     63 72 65 61 74 69 6F 
+     6E 20 65 72 72 6F 72 
+     0D 0A 24             
+0CA2 0D 0A 46 69 6C 65 20  1173 NOFILE:	DB	13,10,'File not found',13,10,'$'
+     6E 6F 74 20 66 6F 75 
+     6E 64 0D 0A 24       
+0CB5 0D 0A 54 72 61 6E 73  1174 ENDMES:	DB	13,10,'Translation complete',13,10,'$'
+     6C 61 74 69 6F 6E 20 
+     63 6F 6D 70 6C 65 74 
+     65 0D 0A 24          
+0CCE 0D 0A 4F 75 74 20 6F  1175 WRTERR:	DB	13,10,'Out of disk space',13,10,'$'
+     66 20 64 69 73 6B 20 
+     73 70 61 63 65 0D 0A 
+     24                   
+0CE4 0D 0A 2A 2A 2A 20 4F  1176 OPCDER:	DM	13,10,'*** Opcode Error '
+     70 63 6F 64 65 20 45 
+     72 72 6F 72 A0       
+0CF7 0D 8A                 1177 CRLF:	DM	13,10
+0CF9 4C 30 30 30 30 00     1178 LABEL:	DB	'L0000',0
+0CFF 3A 89                 1179 	DM	':',9
+0D01                       1180 PUTPT:	DS	2
+0D03                       1181 GETPT:	DS	2
+0D05                       1182 CHAR:	DS	1
+0D06 00                    1183 	DB	0
+0D07                       1184 OPCODE:	DS	80
+0D57                       1185 OP1:	DS	80
+0DA7                       1186 OP2:	DS	80
+0DF7                       1187 PUTBUF:	DS	128
+0E77                       1188 GETBUF:	DS	128
+0EF7                       1189 PUTFCB:	DS	33
+0F18                       1190 	DS	50
+0F4A                       1191 STACK:	EQU	$
+0F4A                       1192 	ORG	1	;This is really just for equates without EQU
+0001                       1193 RSI:	DS	1
+0002                       1194 RDI:	DS	1
+0003                       1195 ODDPAR:	DS	1
+0004                       1196 EVEPAR:	DS	1
+0005                       1197 	DS	5	;MINUS,PLUS,NOT ZERO,ZERO,NOT CARRY
+000A                       1198 CY:	DS	1
+000B                       1199 RAX:	DS	1
+000C                       1200 STP:	DS	1
+000D                       1201 RBX:	DS	1
+000E                       1202 RDX:	DS	1
+000F                       1203 RCX:	DS	1
+0010                       1204 RBL:	DS	1
+0011                       1205 RBH:	DS	1
+0012                       1206 RDL:	DS	1
+0013                       1207 RDH:	DS	1
+0014                       1208 RGCL:	DS	1
+0015                       1209 RCH:	DS	1
+0016                       1210 RAL:	DS	1
+0017                       1211 RIX:	DS	1
+0018                       1212 RIY:	DS	1
+
+
+Error Count =    0
+

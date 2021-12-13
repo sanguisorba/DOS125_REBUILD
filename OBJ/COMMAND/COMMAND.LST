@@ -1,0 +1,3485 @@
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-1
+
+
+
+ 	 	 	 	; COMMAND version 1.17
+ 	 	 	 	;
+ 	 	 	 	; This version of COMMAND is divided into three
+	 	 	 	 distinct parts. First
+ 	 	 	 	; is the resident portion, which includes handl
+	 	 	 	ers for interrupts
+ 	 	 	 	; 22H (terminate), 23H (Cntrl-C), 24H (fatal er
+	 	 	 	ror), and 27H (stay
+ 	 	 	 	; resident); it also has code to test and, if n
+	 	 	 	ecessary, reload the
+ 	 	 	 	; transient portion. Following the resident is 
+	 	 	 	the init code, which is
+ 	 	 	 	; overwritten after use. Then comes the transie
+	 	 	 	nt portion, which
+ 	 	 	 	; includes all command processing (whether inte
+	 	 	 	rnal or external).
+ 	 	 	 	; The transient portion loads at the end of phy
+	 	 	 	sical memory, and it may
+ 	 	 	 	; be overlayed by programs that need as much me
+	 	 	 	mory as possible. When
+ 	 	 	 	; the resident portion of command regains contr
+	 	 	 	ol from a user program,
+ 	 	 	 	; a checksum is performed on the transient port
+	 	 	 	ion to see if it must be
+ 	 	 	 	; reloaded. Thus programs which do not need max
+	 	 	 	imum memory will save
+ 	 	 	 	; the time required to reload COMMAND when they
+	 	 	 	 terminate.
+ 	 	 	 	
+ 	 	 	 	;Use the following booleans to set assembly fla
+	 	 	 	gs
+ = 0000	 	 	 	FALSE   EQU     0
+ = FFFF	 	 	 	TRUE    EQU     NOT FALSE
+ 	 	 	 	
+ =	 	 	 	IBMVER  EQU     FALSE   ;Switch to build IBM ve
+	 	 	 	rsion of Command
+ =	 	 	 	MSVER   EQU     TRUE    ;Switch to build MS-DOS
+	 	 	 	 version of Command
+ 	 	 	 	
+ =	 	 	 	HIGHMEM EQU     FALSE   ;Run resident part abov
+	 	 	 	e transient (high memory)
+ 	 	 	 	
+ = 0017	 	 	 	LINPERPAG       EQU     23
+ = 0001	 	 	 	NORMPERLIN      EQU     1
+ = 0005	 	 	 	WIDEPERLIN      EQU     5
+ 	 	 	 	
+ 	 	 	 	        ENDIF
+ 	 	 	 	
+ 	 	 	 	        IF      MSVER
+ = 003A	 	 	 	SYM     EQU     ":"
+ = 0000	 	 	 	COMDRV  EQU     0
+ 	 	 	 	        ENDIF
+ 	 	 	 	
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-2
+
+
+
+ = 005C	 	 	 	FCB     EQU     5CH
+ = 000D	 	 	 	DSKRESET EQU    13
+ = 0026	 	 	 	SETBASE EQU     38
+ = 0011	 	 	 	SRCHFRST EQU    17
+ = 0012	 	 	 	SRCHNXT EQU     18
+ = 0017	 	 	 	RENAM   EQU     23
+ = 0001	 	 	 	INCHAR  EQU     1
+ = 001B	 	 	 	GETFAT  EQU     27
+ = 000F	 	 	 	OPEN    EQU     15
+ = 0010	 	 	 	CLOSE   EQU     16
+ = 0016	 	 	 	MAKE    EQU     22
+ = 0013	 	 	 	DELETE  EQU     19
+ = 0027	 	 	 	RDBLK   EQU     39
+ = 0028	 	 	 	WRBLK   EQU     40
+ = 001A	 	 	 	SETDMA  EQU     26
+ = 000E	 	 	 	SELDRV  EQU     14
+ = 0019	 	 	 	GETDRV  EQU     25
+ = 0009	 	 	 	PRINTBUF EQU    9
+ = 0002	 	 	 	OUTCH   EQU     2
+ = 000A	 	 	 	INBUF   EQU     10
+ = 002A	 	 	 	GETDATE EQU     2AH
+ = 002B	 	 	 	SETDATE EQU     2BH
+ = 002C	 	 	 	GETTIME EQU     2CH
+ = 002D	 	 	 	SETTIME EQU     2DH
+ = 0021	 	 	 	RR      EQU     33
+ = 000E	 	 	 	RECLEN  EQU     14
+ = 0010	 	 	 	FILLEN  EQU     16
+ = 0014	 	 	 	OFFDATE EQU     20
+ 	 	 	 	
+ 	 	 	 	
+ 	 	 	 	;The following are all of the segments used in 
+	 	 	 	the load order
+ 	 	 	 	
+ 0000	 	 	 	CODERES SEGMENT
+ 0000	 	 	 	CODERES ENDS
+ 	 	 	 	
+ 0000	 	 	 	DATARES SEGMENT BYTE
+ 0000	 	 	 	DATARES ENDS
+ 	 	 	 	
+ 0000	 	 	 	INIT    SEGMENT BYTE
+ 0000	 	 	 	INIT    ENDS
+ 	 	 	 	
+ 0000	 	 	 	TAIL    SEGMENT PARA
+ 0000	 	 	 	TAIL    ENDS
+ 	 	 	 	
+ 0000	 	 	 	TRANCODE        SEGMENT PARA
+ 0000	 	 	 	TRANCODE        ENDS
+ 	 	 	 	
+ 0000	 	 	 	TRANDATA        SEGMENT BYTE
+ 0000	 	 	 	TRANDATA        ENDS
+ 	 	 	 	
+ 0000	 	 	 	TRANSPACE       SEGMENT BYTE
+ 0000	 	 	 	TRANSPACE       ENDS
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-3
+
+
+
+ 	 	 	 	
+ 	 	 	 	RESGROUP        GROUP   CODERES,DATARES,INIT,TA
+	 	 	 	IL
+ 	 	 	 	TRANGROUP       GROUP   TRANCODE,TRANDATA,TRANS
+	 	 	 	PACE
+ 	 	 	 	
+ 	 	 	 	;Data for resident portion
+ 	 	 	 	
+ 0000	 	 	 	DATARES SEGMENT BYTE
+ 0000	 	 	 	        ORG     0
+ = 0000	 	 	 	ZERO1    =       $
+ 0000  000E R	 	 	MESBAS  DW      OFFSET RESGROUP:ERR0
+ 0002  001C R	 	 	        DW      OFFSET RESGROUP:ERR2
+ 0004  0026 R	 	 	        DW      OFFSET RESGROUP:ERR4
+ 0006  002B R	 	 	        DW      OFFSET RESGROUP:ERR6
+ 0008  0030 R	 	 	        DW      OFFSET RESGROUP:ERR8
+ 000A  0041 R	 	 	        DW      OFFSET RESGROUP:ERR10
+ 000C  004D R	 	 	        DW      OFFSET RESGROUP:ERR12
+ 000E  57 72 69 74 65 20	ERR0    DB      "Write protect$"
+       70 72 6F 74 65 63	
+       74 24	 	 	
+ 001C  4E 6F 74 20 72 65	ERR2    DB      "Not ready$"
+       61 64 79 24	 	
+ 0026  44 61 74 61 24	 	ERR4    DB      "Data$"
+ 002B  53 65 65 6B 24	 	ERR6    DB      "Seek$"
+ 0030  53 65 63 74 6F 72	ERR8    DB      "Sector not found$"
+       20 6E 6F 74 20 66	
+       6F 75 6E 64 24	 	
+ 0041  57 72 69 74 65 20	ERR10   DB      "Write fault$"
+       66 61 75 6C 74 24	
+ 004D  44 69 73 6B 24	 	ERR12   DB      "Disk$"
+ 0052  72 65 61 64 24	 	READ    DB      "read$"
+ 0057  77 72 69 74 24	 	WRITE   DB      "writ$"
+ 005C  20 65 72 72 6F 72	ERRMES  DB      " error "
+       20	 	 	
+ 0063  77 72 69 74 69 6E	IOTYP   DB      "writing"
+       67	 	 	
+ 006A  20 64 72 69 76 65	DRVNUM  DB      " drive "
+       20	 	 	
+ 0071  41	 	 	DRVLET  DB      "A"
+ 0072  0D 0A 24	 	 	NEWLIN  DB      13,10,"$"
+ 0075  41 62 6F 72 74 2C	REQUEST DB      "Abort, Retry, Ignore? $"
+       20 52 65 74 72 79	
+       2C 20 49 67 6E 6F	
+       72 65 3F 20 24	 	
+ 008C  0D 0A 46 69 6C 65	BADFAT  DB      13,10,"File allocation table ba
+	 	 	 	d,$"
+       20 61 6C 6C 6F 63	
+       61 74 69 6F 6E 20	
+       74 61 62 6C 65 20	
+       62 61 64 2C 24	 	
+ 00A9  0D 0A 49 6E 76 61	COMBAD  DB      13,10,"Invalid COMMAND.COM"
+       6C 69 64 20 43 4F	
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-4
+
+
+
+       4D 4D 41 4E 44 2E	
+       43 4F 4D	 	 	
+ 00BE  0D 0A 49 6E 73 65	NEEDCOM DB      13,10,"Insert DOS disk in "
+       72 74 20 44 4F 53	
+       20 64 69 73 6B 20	
+       69 6E 20	 	 	
+ 	 	 	 	        ELSE
+ 00D3  64 65 66 61 75 6C	        DB      "default drive"
+       74 20 64 72 69 76	
+       65	 	 	
+ 	 	 	 	        ENDIF
+ 00E0  0D 0A 61 6E 64 20	PROMPT  DB      13,10,"and strike any key when 
+	 	 	 	ready",13,10,"$"
+       73 74 72 69 6B 65	
+       20 61 6E 79 20 6B	
+       65 79 20 77 68 65	
+       6E 20 72 65 61 64	
+       79 0D 0A 24	 	
+ 0102  0D 0A 49 6E 73 65	NEEDBAT DB      13,10,"Insert disk with batch f
+	 	 	 	ile$"
+       72 74 20 64 69 73	
+       6B 20 77 69 74 68	
+       20 62 61 74 63 68	
+       20 66 69 6C 65 24	
+ 0120  0D 0A 54 65 72 6D	ENDBATMES DB    13,10,"Terminate batch job (Y/N
+	 	 	 	)? $"
+       69 6E 61 74 65 20	
+       62 61 74 63 68 20	
+       6A 6F 62 20 28 59	
+       2F 4E 29 3F 20 24	
+ 013E  00	 	 	LOADING DB      0
+ 013F  01 41 55 54 4F 45	BATFCB  DB      1,"AUTOEXECBAT"
+       58 45 43 42 41 54	
+ 014B     15 [	 	 	        DB      21 DUP(?)
+                ??	 	
+                    ]	 	
+ 	 	 	 	
+ 0160  0000	 	 	        DW      0
+ 0162  0000	 	 	        DW      0               ;Initialize RR 
+	 	 	 	field to zero
+ 0164     0A [	 	 	PARMTAB DW      10 DUP(-1)      ;No parameters 
+	 	 	 	initially
+                FFFF	 	
+                      ]	 	
+ 	 	 	 	
+ 0178  01	 	 	BATCH   DB      1               ;Assume batch m
+	 	 	 	ode initially
+ 0179  00 43 4F 4D 4D 41	COMFCB  DB      COMDRV,"COMMAND COM"
+       4E 44 20 43 4F 4D	
+ 0185     19 [	 	 	        DB      25 DUP(?)
+                ??	 	
+                    ]	 	
+ 	 	 	 	
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-5
+
+
+
+ 019E  0104 R	 	 	TRANS   DW      OFFSET TRANGROUP:COMMAND
+ 01A0  ????	 	 	TRNSEG  DW      ?
+ 01A2  ??	 	 	BATBYT  DB      ?
+ 01A3  ????	 	 	MEMSIZ  DW      ?
+ 01A5  ????	 	 	SUM     DW      ?
+ 01A7     04 [	 	 	INITADD DB      4 DUP(?)
+                ??	 	
+                    ]	 	
+ 	 	 	 	
+ = 01AB	 	 	 	RESDATASIZE     EQU     $-ZERO1
+ 01AB	 	 	 	DATARES ENDS
+ 	 	 	 	
+ 	 	 	 	;Data for transient portion
+ 	 	 	 	
+ 0000	 	 	 	TRANDATA        SEGMENT BYTE
+ 0000	 	 	 	        ORG     0
+ = 0000	 	 	 	ZERO2    EQU     $
+ 0000  42 61 64 20 63 6F	BADNAM  DB      "Bad command or file name",13,1
+	 	 	 	0,"$"
+       6D 6D 61 6E 64 20	
+       6F 72 20 66 69 6C	
+       65 20 6E 61 6D 65	
+       0D 0A 24	 	 	
+ 001B  4D 69 73 73 69 6E	MISNAM  DB      "Missing file name$"
+       67 20 66 69 6C 65	
+       20 6E 61 6D 65 24	
+ 002D  44 75 70 6C 69 63	RENERR  DB      "Duplicate file name or "
+       61 74 65 20 66 69	
+       6C 65 20 6E 61 6D	
+       65 20 6F 72 20	 	
+ 0044  46 69 6C 65 20 6E	NOTFND  DB      "File not found$"
+       6F 74 20 66 6F 75	
+       6E 64 24	 	 	
+ 0053  45 72 72 6F 72 20	EXEBAD  DB      "Error in EXE file$"
+       69 6E 20 45 58 45	
+       20 66 69 6C 65 24	
+ 0065  49 6E 73 75 66 66	NOSPACE DB      "Insufficient disk space",13,10
+	 	 	 	,"$"
+       69 63 69 65 6E 74	
+       20 64 69 73 6B 20	
+       73 70 61 63 65 0D	
+       0A 24	 	 	
+ 007F  46 69 6C 65 20 63	FULDIR  DB      "File creation error",13,10,"$"
+       72 65 61 74 69 6F	
+       6E 20 65 72 72 6F	
+       72 0D 0A 24	 	
+ 0095  46 69 6C 65 20 63	OVERWR  DB      "File cannot be copied onto its
+	 	 	 	elf",13,10,"$"
+       61 6E 6E 6F 74 20	
+       62 65 20 63 6F 70	
+       69 65 64 20 6F 6E	
+       74 6F 20 69 74 73	
+       65 6C 66 0D 0A 24	
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-6
+
+
+
+ 00B9  43 6F 6E 74 65 6E	LOSTERR DB      "Content of destination lost be
+	 	 	 	fore copy",13,10,"$"
+       74 20 6F 66 20 64	
+       65 73 74 69 6E 61	
+       74 69 6F 6E 20 6C	
+       6F 73 74 20 62 65	
+       66 6F 72 65 20 63	
+       6F 70 79 0D 0A 24	
+ 00E3  20 46 69 6C 65 28	COPIED  DB      " File(s) copied$"
+       73 29 20 63 6F 70	
+       69 65 64 24	 	
+ 00F3  20 46 69 6C 65 28	DIRMES  DB      " File(s)$"
+       73 29 24	 	 	
+ 00FC  50 72 6F 67 72 61	TOOBIG  DB      "Program too big to fit in memo
+	 	 	 	ry$"
+       6D 20 74 6F 6F 20	
+       62 69 67 20 74 6F	
+       20 66 69 74 20 69	
+       6E 20 6D 65 6D 6F	
+       72 79 24	 	 	
+ 011D  49 6E 76 61 6C 69	BADDRV  DB      "Invalid drive specification$"
+       64 20 64 72 69 76	
+       65 20 73 70 65 63	
+       69 66 69 63 61 74	
+       69 6F 6E 24	 	
+ 0139  53 74 72 69 6B 65	PAUSMES DB      "Strike a key when ready . . . 
+	 	 	 	$"
+       20 61 20 6B 65 79	
+       20 77 68 65 6E 20	
+       72 65 61 64 79 20	
+       2E 20 2E 20 2E 20	
+       24	 	 	
+ 0158  49 6C 6C 65 67 61	BADSWT  DB      "Illegal switch",13,10,"$"
+       6C 20 73 77 69 74	
+       63 68 0D 0A 24	 	
+ 0169  53 75 6E 4D 6F 6E	WEEKTAB DB      "SunMonTueWedThuFriSat"
+       54 75 65 57 65 64	
+       54 68 75 46 72 69	
+       53 61 74	 	 	
+ 017E  0D 0A 49 6E 76 61	BADDAT  DB      13,10,"Invalid date$"
+       6C 69 64 20 64 61	
+       74 65 24	 	 	
+ 018D  43 75 72 72 65 6E	CURDAT  DB      "Current date is $"
+       74 20 64 61 74 65	
+       20 69 73 20 24	 	
+ 019E  0D 0A 45 6E 74 65	NEWDAT  DB      13,10,"Enter new date: $"
+       72 20 6E 65 77 20	
+       64 61 74 65 3A 20	
+       24	 	 	
+ 01B1  0D 0A 49 6E 76 61	BADTIM  DB      13,10,"Invalid time$"
+       6C 69 64 20 74 69	
+       6D 65 24	 	 	
+ 01C0  43 75 72 72 65 6E	CURTIM  DB      "Current time is $"
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-7
+
+
+
+       74 20 74 69 6D 65	
+       20 69 73 20 24	 	
+ 01D1  0D 0A 45 6E 74 65	NEWTIM  DB      13,10,"Enter new time: $"
+       72 20 6E 65 77 20	
+       74 69 6D 65 3A 20	
+       24	 	 	
+ 01E4  41 72 65 20 79 6F	SUREMES DB      "Are you sure (Y/N)? $"
+       75 20 73 75 72 65	
+       20 28 59 2F 4E 29	
+       3F 20 24	 	 	
+ 	 	 	 	
+ 01F9  04 44 49 52 01	 	COMTAB  DB      4,"DIR",1
+ 01FE  0412 R	 	 	        DW      OFFSET TRANGROUP:CATALOG
+ 0200  07 52 45 4E 41 4D	        DB      7,"RENAME",1
+       45 01	 	 	
+ 0208  05E9 R	 	 	        DW      OFFSET TRANGROUP:RENAME
+ 020A  04 52 45 4E 01	 	        DB      4,"REN",1
+ 020F  05E9 R	 	 	        DW      OFFSET TRANGROUP:RENAME
+ 0211  06 45 52 41 53 45	        DB      6,"ERASE",1
+       01	 	 	
+ 0218  05B0 R	 	 	        DW      OFFSET TRANGROUP:ERASE
+ 021A  04 44 45 4C 01	 	        DB      4,"DEL",1
+ 021F  05B0 R	 	 	        DW      OFFSET TRANGROUP:ERASE
+ 0221  05 54 59 50 45 01	        DB      5,"TYPE",1
+ 0227  0606 R	 	 	        DW      OFFSET TRANGROUP:TYPEFIL
+ 0229  04 52 45 4D 01	 	        DB      4,"REM",1
+ 022E  0104 R	 	 	        DW      OFFSET TRANGROUP:COMMAND
+ 0230  05 43 4F 50 59 01	        DB      5,"COPY",1
+ 0236  0650 R	 	 	        DW      OFFSET TRANGROUP:COPY
+ 0238  06 50 41 55 53 45	        DB      6,"PAUSE",1
+       01	 	 	
+ 023F  09D4 R	 	 	        DW      OFFSET TRANGROUP:PAUSE
+ 0241  05 44 41 54 45 00	        DB      5,"DATE",0
+ 0247  09F8 R	 	 	        DW      OFFSET TRANGROUP:DATE
+ 0249  05 54 49 4D 45 00	        DB      5,"TIME",0
+ 024F  0A8B R	 	 	        DW      OFFSET TRANGROUP:TIME
+ 0251  00	 	 	        DB      0               ;Terminate comm
+	 	 	 	and table
+ 	 	 	 	
+ 0252  80 01 0D	 	 	COMBUF  DB      128,1,13
+ 	 	 	 	
+ = 0255	 	 	 	TRANDATASIZE    EQU     $-ZERO2
+ 0255	 	 	 	TRANDATA        ENDS
+ 	 	 	 	
+ 	 	 	 	;Uninitialized transient data
+ 0000	 	 	 	TRANSPACE       SEGMENT BYTE
+ 0000	 	 	 	        ORG     0
+ = 0000	 	 	 	ZERO3    =       $
+ 0000     80 [	 	 	        DB      128 DUP(?)
+                ??	 	
+                    ]	 	
+ 	 	 	 	
+ 0080     01 [	 	 	TPA     DW      1 DUP(?)
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-8
+
+
+
+                ????	 	
+                      ]	 	
+ 	 	 	 	
+ 0082     01 [	 	 	RESSEG  DW      1 DUP(?)
+                ????	 	
+                      ]	 	
+ 	 	 	 	
+ 0084     01 [	 	 	CHKDRV  DB      1 DUP(?)
+                ??	 	
+                    ]	 	
+ 	 	 	 	
+ 0085     01 [	 	 	FILTYP  DB      1 DUP(?)
+                ??	 	
+                    ]	 	
+ 	 	 	 	
+ 0086     01 [	 	 	CURDRV  DB      1 DUP(?)
+                ??	 	
+                    ]	 	
+ 	 	 	 	
+ 0087     01 [	 	 	PARM1   DB      1 DUP(?)
+                ??	 	
+                    ]	 	
+ 	 	 	 	
+ 0088     01 [	 	 	PARM2   DB      1 DUP(?)
+                ??	 	
+                    ]	 	
+ 	 	 	 	
+ 0089     01 [	 	 	COMSW   DW      1 DUP(?)
+                ????	 	
+                      ]	 	
+ 	 	 	 	
+ 008B     01 [	 	 	ARG1S   DW      1 DUP(?)
+                ????	 	
+                      ]	 	
+ 	 	 	 	
+ 008D     01 [	 	 	ARG2S   DW      1 DUP(?)
+                ????	 	
+                      ]	 	
+ 	 	 	 	
+ 008F     01 [	 	 	FLAGER  DB      1 DUP(?)
+                ??	 	
+                    ]	 	
+ 	 	 	 	
+ 0090     01 [	 	 	CFLAG   DB      1 DUP(?)
+                ??	 	
+                    ]	 	
+ 	 	 	 	
+ 0091     01 [	 	 	SPECDRV DB      1 DUP(?)
+                ??	 	
+                    ]	 	
+ 	 	 	 	
+ 0092     01 [	 	 	BYTCNT  DW      1 DUP(?)
+                ????	 	
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-9
+
+
+
+                      ]	 	
+ 	 	 	 	
+ 0094     01 [	 	 	NXTADD  DW      1 DUP(?)
+                ????	 	
+                      ]	 	
+ 	 	 	 	
+ 0096     01 [	 	 	LINCNT  DB      1 DUP(?)
+                ??	 	
+                    ]	 	
+ 	 	 	 	
+ 0097     01 [	 	 	LINLEN  DB      1 DUP(?)
+                ??	 	
+                    ]	 	
+ 	 	 	 	
+ 0098     01 [	 	 	FILECNT DW      1 DUP(?)
+                ????	 	
+                      ]	 	
+ 	 	 	 	
+ 009A	 	 	 	EXEFCB  LABEL WORD
+ 009A     01 [	 	 	IDLEN   DB      1 DUP(?)
+                ??	 	
+                    ]	 	
+ 	 	 	 	
+ 009B     08 [	 	 	ID      DB      8 DUP(?)
+                ??	 	
+                    ]	 	
+ 	 	 	 	
+ 00A3     03 [	 	 	COM     DB      3 DUP(?)
+                ??	 	
+                    ]	 	
+ 	 	 	 	
+ 00A6     25 [	 	 	DEST    DB      37 DUP(?)
+                ??	 	
+                    ]	 	
+ 	 	 	 	
+ 00CB     0B [	 	 	DESTNAME DB     11 DUP(?)
+                ??	 	
+                    ]	 	
+ 	 	 	 	
+ 00D6     25 [	 	 	DIRBUF  DB      37 DUP(?)
+                ??	 	
+                    ]	 	
+ 	 	 	 	
+ 00FB     01 [	 	 	BITS    DW      1 DUP(?)
+                ????	 	
+                      ]	 	
+ 	 	 	 	
+ 00FD     01 [	 	 	FULLSCR DW      1 DUP(?)
+                ????	 	
+                      ]	 	
+ 	 	 	 	
+ 00FF     01 [	 	 	EXEEND  DW      1 DUP(?)
+                ????	 	
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-10
+
+
+
+                      ]	 	
+ 	 	 	 	
+ 	 	 	 	;Header variables for EXE file load
+ 	 	 	 	;These are overlapped with COPY variables, belo
+	 	 	 	w
+ 0101	 	 	 	RUNVAR  LABEL WORD
+ 0101     01 [	 	 	RELPT   DW      1 DUP(?)
+                ????	 	
+                      ]	 	
+ 	 	 	 	
+ 0103     01 [	 	 	RELSEG  DW      1 DUP(?)
+                ????	 	
+                      ]	 	
+ 	 	 	 	
+ 0105	 	 	 	PSIZE   LABEL   WORD
+ 0105     01 [	 	 	PAGES   DW      1 DUP(?)
+                ????	 	
+                      ]	 	
+ 	 	 	 	
+ 0107     01 [	 	 	RELCNT  DW      1 DUP(?)
+                ????	 	
+                      ]	 	
+ 	 	 	 	
+ 0109     01 [	 	 	HEADSIZ DW      1 DUP(?)
+                ????	 	
+                      ]	 	
+ 	 	 	 	
+ 010B     01 [	 	 	        DW      1 DUP(?)
+                ????	 	
+                      ]	 	
+ 	 	 	 	
+ 010D     01 [	 	 	LOADLOW DW      1 DUP(?)
+                ????	 	
+                      ]	 	
+ 	 	 	 	
+ 010F     01 [	 	 	INITSS  DW      1 DUP(?)
+                ????	 	
+                      ]	 	
+ 	 	 	 	
+ 0111     01 [	 	 	INITSP  DW      1 DUP(?)
+                ????	 	
+                      ]	 	
+ 	 	 	 	
+ 0113     01 [	 	 	        DW      1 DUP(?)
+                ????	 	
+                      ]	 	
+ 	 	 	 	
+ 0115     01 [	 	 	INITIP  DW      1 DUP(?)
+                ????	 	
+                      ]	 	
+ 	 	 	 	
+ 0117     01 [	 	 	INITCS  DW      1 DUP(?)
+                ????	 	
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-11
+
+
+
+                      ]	 	
+ 	 	 	 	
+ 0119     01 [	 	 	RELTAB  DW      1 DUP(?)
+                ????	 	
+                      ]	 	
+ 	 	 	 	
+ = 001A	 	 	 	RUNVARSIZ       EQU     $-RUNVAR
+ 	 	 	 	
+ 011B     80 [	 	 	        DB      80H DUP(?)
+                ??	 	
+                    ]	 	
+ 	 	 	 	
+ 019B	 	 	 	STACK   LABEL   WORD
+ 	 	 	 	
+ = 019B	 	 	 	PRETRLEN        EQU     $-ZERO3          ;Used 
+	 	 	 	later to compute TRNLEN
+ 	 	 	 	
+ 0101	 	 	 	        ORG     RUNVAR-ZERO3                   
+	 	 	 	  ;Overlaps EXE variables
+ 	 	 	 	
+ 0101     01 [	 	 	SRCPT   DW      1 DUP(?)
+                ????	 	
+                      ]	 	
+ 	 	 	 	
+ 0103     01 [	 	 	INEXACT DB      1 DUP(?)
+                ??	 	
+                    ]	 	
+ 	 	 	 	
+ 0104     01 [	 	 	APPEND  DB      1 DUP(?)
+                ??	 	
+                    ]	 	
+ 	 	 	 	
+ 0105     01 [	 	 	NOWRITE DB      1 DUP(?)
+                ??	 	
+                    ]	 	
+ 	 	 	 	
+ 0106     01 [	 	 	ASCII   DB      1 DUP(?)
+                ??	 	
+                    ]	 	
+ 	 	 	 	
+ 0107     01 [	 	 	PLUS    DB      1 DUP(?)
+                ??	 	
+                    ]	 	
+ 	 	 	 	
+ 0108     0B [	 	 	SOURCE  DB      11 DUP(?)
+                ??	 	
+                    ]	 	
+ 	 	 	 	
+ = 0113	 	 	 	TRANSPACESIZE   EQU     $-ZERO3
+ 0113	 	 	 	TRANSPACE       ENDS
+ 	 	 	 	
+ 	 	 	 	
+ 	 	 	 	;START OF RESIDENT PORTION
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-12
+
+
+
+ 	 	 	 	
+ 0000	 	 	 	CODERES SEGMENT
+ 	 	 	 	ASSUME  CS:RESGROUP,DS:RESGROUP,ES:RESGROUP,SS:
+	 	 	 	RESGROUP
+ 0000	 	 	 	        ORG     0
+ = 0000	 	 	 	ZERO4    =       $
+ 0000	 	 	 	PARMBUF LABEL   WORD
+ 	 	 	 	
+ 0100	 	 	 	        ORG     100H
+ 	 	 	 	
+ 0100	 	 	 	RSTACK  LABEL   WORD
+ 	 	 	 	
+ 0100	 	 	 	PROGSTART:
+ 0100  E9 0000 R	 	        JMP     CONPROC
+ 	 	 	 	
+ 0103  0000	 	 	LTPA    DW      0               ;WILL STORE TPA
+	 	 	 	 SEGMENT HERE
+ 0105  0000	 	 	MYSEG   DW      0               ;Put our own se
+	 	 	 	gment here
+ 	 	 	 	
+ 0107	 	 	 	CONTC:
+ 0107  8C C8	 	 	        MOV     AX,CS
+ 0109  8E D8	 	 	        MOV     DS,AX
+ 010B  8E D0	 	 	        MOV     SS,AX
+ 010D  BC 0100 R	 	        MOV     SP,OFFSET RESGROUP:RSTACK
+ 0110  FB	 	 	        STI
+ 0111  E8 0294 R	 	        CALL    SETVECT
+ 0114  B4 0D	 	 	        MOV     AH,DSKRESET
+ 0116  CD 21	 	 	        INT     33              ;Reset disks in
+	 	 	 	 case files were open
+ 0118  F6 06 0178 R FF	 	        TEST    [BATCH],-1
+ 011D  74 1B	 	 	        JZ      LODCOM
+ 011F	 	 	 	ASKEND:
+ 011F  BA 0120 R	 	        MOV     DX,OFFSET RESGROUP:ENDBATMES
+ 0122  B4 09	 	 	        MOV     AH,PRINTBUF
+ 0124  CD 21	 	 	        INT     33
+ 0126  B8 0C01	 	 	        MOV     AX,0C00H+INCHAR
+ 0129  CD 21	 	 	        INT     33
+ 012B  24 5F	 	 	        AND     AL,5FH
+ 012D  3C 4E	 	 	        CMP     AL,"N"
+ 012F  74 09	 	 	        JZ      LODCOM
+ 0131  3C 59	 	 	        CMP     AL,"Y"
+ 0133  75 EA	 	 	        JNZ     ASKEND
+ 0135  C6 06 0178 R 00	 	        MOV     [BATCH],0
+ 013A	 	 	 	LODCOM:
+ 013A  8C C8	 	 	        MOV     AX,CS
+ 013C  8E D0	 	 	        MOV     SS,AX
+ 013E  BC 0100 R	 	        MOV     SP,OFFSET RESGROUP:RSTACK
+ 0141  8E D8	 	 	        MOV     DS,AX
+ 0143  E8 0294 R	 	        CALL    SETVECT
+ 0146  E8 027C R	 	        CALL    CHKSUM
+ 0149  3B 16 01A5 R	 	        CMP     DX,[SUM]
+ 014D  74 16	 	 	        JZ      HAVCOM
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-13
+
+
+
+ 014F  C6 06 013E R 01	 	        MOV     [LOADING],1
+ 0154  E8 0230 R	 	        CALL    LOADCOM
+ 0157	 	 	 	CHKSAME:
+ 0157  E8 027C R	 	        CALL    CHKSUM
+ 015A  3B 16 01A5 R	 	        CMP     DX,[SUM]
+ 015E  74 05	 	 	        JZ      HAVCOM
+ 0160  E8 0277 R	 	        CALL    WRONGCOM
+ 0163  EB F2	 	 	        JMP     SHORT CHKSAME
+ 0165	 	 	 	HAVCOM:
+ 0165  C6 06 013E R 00	 	        MOV     [LOADING],0
+ 016A  BE 0103 R	 	        MOV     SI,OFFSET RESGROUP:LTPA
+ 016D  BF 0080 R	 	        MOV     DI,OFFSET TRANGROUP:TPA
+ 0170  8E 06 01A0 R	 	        MOV     ES,[TRNSEG]
+ 0174  FC	 	 	        CLD
+ 0175  A5	 	 	        MOVSW           ;Move TPA segment to tr
+	 	 	 	ansient storage
+ 0176  A5	 	 	        MOVSW           ;Move resident segment 
+	 	 	 	too
+ 0177  A1 01A3 R	 	        MOV     AX,[MEMSIZ]
+ 017A  26: A3 0002	 	        MOV     WORD PTR ES:[2],AX
+ 017E  FF 2E 019E R	 	        JMP     DWORD PTR [TRANS]
+ 	 	 	 	
+ 0182	 	 	 	RESIDENT:
+ 0182  83 C2 0F	 	 	        ADD     DX,15
+ 0185  B1 04	 	 	        MOV     CL,4
+ 0187  D3 EA	 	 	        SHR     DX,CL           ;Number of para
+	 	 	 	graphs of new addition
+ 0189  2E: 01 16 0103 R	 	        ADD     CS:[LTPA],DX
+ 018E  33 C0	 	 	        XOR     AX,AX
+ 0190  8E D8	 	 	        MOV     DS,AX
+ 0192  FF 2E 0080	 	        JMP     DWORD PTR DS:[80H]             
+	 	 	 	 ;Pretend user executed INT 20H
+ 	 	 	 	
+ 0196	 	 	 	DSKERR:
+ 	 	 	 	        ;**************************************
+	 	 	 	****************
+ 	 	 	 	        ;       THIS IS THE DEFAULT DISK ERROR 
+	 	 	 	HANDLING CODE 
+ 	 	 	 	        ;       AVAILABLE TO ALL USERS IF THEY 
+	 	 	 	DO NOT TRY TO 
+ 	 	 	 	        ;       INTERCEPT INTERRUPT 24H.
+ 	 	 	 	        ;**************************************
+	 	 	 	****************
+ 0196  FB	 	 	        STI
+ 0197  1E	 	 	        PUSH    DS
+ 0198  0E	 	 	        PUSH    CS
+ 0199  1F	 	 	        POP     DS              ;Set up local d
+	 	 	 	ata segment
+ 019A  52	 	 	        PUSH    DX
+ 019B  E8 0226 R	 	        CALL    CRLF
+ 019E  5A	 	 	        POP     DX
+ 019F  04 41	 	 	        ADD     AL,"A"          ;Compute drive 
+	 	 	 	letter
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-14
+
+
+
+ 01A1  A2 0071 R	 	        MOV     [DRVLET],AL
+ 01A4  F6 C4 80	 	 	        TEST    AH,80H          ;Check if hard 
+	 	 	 	disk error
+ 01A7  75 5E	 	 	        JNZ     FATERR
+ 01A9  BE 0052 R	 	        MOV     SI,OFFSET RESGROUP:READ
+ 01AC  F6 C4 01	 	 	        TEST    AH,1
+ 01AF  74 03	 	 	        JZ      SAVMES
+ 01B1  BE 0057 R	 	        MOV     SI,OFFSET RESGROUP:WRITE
+ 01B4	 	 	 	SAVMES:
+ 01B4  AD	 	 	        LODSW
+ 01B5  A3 0063 R	 	        MOV     WORD PTR [IOTYP],AX
+ 01B8  AD	 	 	        LODSW
+ 01B9  A3 0065 R	 	        MOV     WORD PTR [IOTYP+2],AX
+ 01BC  81 E7 00FF	 	        AND     DI,0FFH
+ 01C0  83 FF 0C	 	 	        CMP     DI,12
+ 01C3  76 03	 	 	        JBE     HAVCOD
+ 01C5  BF 000C	 	 	        MOV     DI,12
+ 01C8	 	 	 	HAVCOD:
+ 01C8  8B BD 0000 R	 	        MOV     DI,WORD PTR [DI+MESBAS] ;Get po
+	 	 	 	inter to error message
+ 01CC  87 FA	 	 	        XCHG    DI,DX           ;May need DX la
+	 	 	 	ter
+ 01CE  B4 09	 	 	        MOV     AH,PRINTBUF
+ 01D0  CD 21	 	 	        INT     33              ;Print error ty
+	 	 	 	pe
+ 01D2  BA 005C R	 	        MOV     DX,OFFSET RESGROUP:ERRMES
+ 01D5  CD 21	 	 	        INT     33
+ 01D7  80 3E 013E R 00	 	        CMP     [LOADING],0
+ 01DC  75 39	 	 	        JNZ     GETCOMDSK
+ 01DE	 	 	 	ASK:
+ 01DE  BA 0075 R	 	        MOV     DX,OFFSET RESGROUP:REQUEST
+ 01E1  B4 09	 	 	        MOV     AH,PRINTBUF
+ 01E3  CD 21	 	 	        INT     33
+ 01E5  B8 0C01	 	 	        MOV     AX,0C00H+INCHAR
+ 01E8  CD 21	 	 	        INT     33              ;Get response
+ 01EA  E8 0226 R	 	        CALL    CRLF
+ 01ED  0C 20	 	 	        OR      AL,20H          ;Convert to low
+	 	 	 	er case
+ 01EF  B4 00	 	 	        MOV     AH,0            ;Return code fo
+	 	 	 	r ignore
+ 01F1  3C 69	 	 	        CMP     AL,"i"          ;Ignore?
+ 01F3  74 0C	 	 	        JZ      EXIT
+ 01F5  FE C4	 	 	        INC     AH
+ 01F7  3C 72	 	 	        CMP     AL,"r"          ;Retry?
+ 01F9  74 06	 	 	        JZ      EXIT
+ 01FB  FE C4	 	 	        INC     AH
+ 01FD  3C 61	 	 	        CMP     AL,"a"          ;Abort?
+ 01FF  75 DD	 	 	        JNZ     ASK
+ 0201	 	 	 	EXIT:
+ 0201  8A C4	 	 	        MOV     AL,AH
+ 0203  8B D7	 	 	        MOV     DX,DI
+ 0205  1F	 	 	        POP     DS
+ 0206  CF	 	 	        IRET
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-15
+
+
+
+ 	 	 	 	
+ 0207	 	 	 	FATERR:
+ 0207  BA 008C R	 	        MOV     DX,OFFSET RESGROUP:BADFAT
+ 020A  B4 09	 	 	        MOV     AH,PRINTBUF
+ 020C  CD 21	 	 	        INT     33
+ 020E  BA 006A R	 	        MOV     DX,OFFSET RESGROUP:DRVNUM
+ 0211  CD 21	 	 	        INT     33
+ 0213  B0 02	 	 	        MOV     AL,2            ;Abort
+ 0215  1F	 	 	        POP     DS
+ 0216  CF	 	 	        IRET
+ 	 	 	 	
+ 0217	 	 	 	GETCOMDSK:
+ 0217  BA 00BE R	 	        MOV     DX,OFFSET RESGROUP:NEEDCOM
+ 021A  B4 09	 	 	        MOV     AH,PRINTBUF
+ 021C  CD 21	 	 	        INT     33
+ 021E  B8 0C07	 	 	        MOV     AX,0C07H        ;Get char witho
+	 	 	 	ut testing or echo
+ 0221  CD 21	 	 	        INT     33
+ 0223  E9 013A R	 	        JMP     LODCOM
+ 	 	 	 	
+ 0226	 	 	 	CRLF:
+ 0226  BA 0072 R	 	        MOV     DX,OFFSET RESGROUP:NEWLIN
+ 0229  50	 	 	        PUSH    AX
+ 022A  B4 09	 	 	        MOV     AH,PRINTBUF
+ 022C  CD 21	 	 	        INT     33
+ 022E  58	 	 	        POP     AX
+ 022F  C3	 	 	RET10:  RET
+ 	 	 	 	
+ 0230	 	 	 	LOADCOM:
+ 0230  1E	 	 	        PUSH    DS
+ 0231  8E 1E 01A0 R	 	        MOV     DS,[TRNSEG]
+ 0235  BA 0100	 	 	        MOV     DX,100H
+ 0238  B4 1A	 	 	        MOV     AH,SETDMA
+ 023A  CD 21	 	 	        INT     33
+ 023C  1F	 	 	        POP     DS
+ 023D  BA 0179 R	 	        MOV     DX,OFFSET RESGROUP:COMFCB
+ 0240  B4 0F	 	 	        MOV     AH,OPEN
+ 0242  CD 21	 	 	        INT     33              ;Open COMMAND.C
+	 	 	 	OM
+ 0244  0A C0	 	 	        OR      AL,AL
+ 0246  74 0E	 	 	        JZ      READCOM
+ 0248  BA 00BE R	 	        MOV     DX,OFFSET RESGROUP:NEEDCOM
+ 024B	 	 	 	PROMPTCOM:
+ 024B  B4 09	 	 	        MOV     AH,PRINTBUF
+ 024D  CD 21	 	 	        INT     33
+ 024F  B8 0C07	 	 	        MOV     AX,0C07H        ;Get char witho
+	 	 	 	ut testing or echo
+ 0252  CD 21	 	 	        INT     33
+ 0254  EB DA	 	 	        JMP     SHORT LOADCOM
+ 0256	 	 	 	READCOM:
+ 0256  C7 06 019A R 0000 R	        MOV     WORD PTR[COMFCB+RR],OFFSET RESG
+	 	 	 	ROUP:TRANSTART
+ 025C  33 C0	 	 	        XOR     AX,AX
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-16
+
+
+
+ 025E  A3 019C R	 	        MOV     WORD PTR[COMFCB+RR+2],AX
+ 0261  A2 0179 R	 	        MOV     [COMFCB],AL             ;Use de
+	 	 	 	fault drive
+ 0264  40	 	 	        INC     AX
+ 0265  A3 0187 R	 	        MOV     WORD PTR[COMFCB+RECLEN],AX
+ 0268  B9 0E1D 90	 	        MOV     CX,COMLEN
+ 026C  BA 0179 R	 	        MOV     DX,OFFSET RESGROUP:COMFCB
+ 026F  B4 27	 	 	        MOV     AH,RDBLK
+ 0271  CD 21	 	 	        INT     33
+ 0273  0A C0	 	 	        OR      AL,AL
+ 0275  74 B8	 	 	        JZ      RET10
+ 0277	 	 	 	WRONGCOM:
+ 0277  BA 00A9 R	 	        MOV     DX,OFFSET RESGROUP:COMBAD
+ 027A  EB CF	 	 	        JMP     SHORT PROMPTCOM
+ 	 	 	 	
+ 027C	 	 	 	CHKSUM:
+ 027C  FC	 	 	        CLD
+ 027D  1E	 	 	        PUSH    DS
+ 027E  8E 1E 01A0 R	 	        MOV     DS,[TRNSEG]
+ 0282  BE 0100	 	 	        MOV     SI,100H
+ 0285  B9 0E1D 90	 	        MOV     CX,COMLEN
+ 0289  D1 E9	 	 	        SHR     CX,1
+ 028B  33 D2	 	 	        XOR     DX,DX
+ 028D	 	 	 	CHK:
+ 028D  AD	 	 	        LODSW
+ 028E  03 D0	 	 	        ADD     DX,AX
+ 0290  E2 FB	 	 	        LOOP    CHK
+ 0292  1F	 	 	        POP     DS
+ 0293  C3	 	 	        RET
+ 	 	 	 	
+ 0294	 	 	 	SETVECT:
+ 0294  BA 013A R	 	        MOV     DX,OFFSET RESGROUP:LODCOM
+ 0297  B8 2522	 	 	        MOV     AX,2522H        ;Set Terminate 
+	 	 	 	address
+ 029A  CD 21	 	 	        INT     21H
+ 029C  BA 0107 R	 	        MOV     DX,OFFSET RESGROUP:CONTC
+ 029F  B8 2523	 	 	        MOV     AX,2523H        ;Set Ctrl-C add
+	 	 	 	ress
+ 02A2  CD 21	 	 	        INT     21H
+ 02A4  BA 0196 R	 	        MOV     DX,OFFSET RESGROUP:DSKERR
+ 02A7  B8 2524	 	 	        MOV     AX,2524H        ;Set Hard Disk 
+	 	 	 	Error address
+ 02AA  CD 21	 	 	        INT     33
+ 02AC  BA 0182 R	 	        MOV     DX,OFFSET RESGROUP:RESIDENT
+ 02AF  B8 2527	 	 	        MOV     AX,2527H        ;Set Terminate 
+	 	 	 	and Stay Resident address
+ 02B2  CD 21	 	 	        INT     33
+ 02B4  C3	 	 	        RET
+ = 02B5	 	 	 	RESCODESIZE     EQU     $-ZERO4
+ 02B5	 	 	 	CODERES ENDS
+ 	 	 	 	
+ 	 	 	 	;**********************************************
+	 	 	 	*********************
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-17
+
+
+
+ 	 	 	 	;START OF INIT PORTION
+ 	 	 	 	;This code is overlayed the first time the TPA 
+	 	 	 	is used.
+ 	 	 	 	
+ 0000	 	 	 	INIT    SEGMENT BYTE
+ 	 	 	 	
+ 0000	 	 	 	        ORG     0
+ = 0000	 	 	 	ZERO5    =       $
+ 0000	 	 	 	CONPROC:
+ 0000  BC 0100 R	 	        MOV     SP,OFFSET RESGROUP:RSTACK
+ 	 	 	 	
+ 	 	 	 	        ENDIF
+ 	 	 	 	
+ 	 	 	 	        IF      NOT HIGHMEM
+ 0003  8C C8	 	 	        MOV     AX,CS
+ 0005  05 0046	 	 	        ADD     AX,((RESCODESIZE+RESDATASIZE)+1
+	 	 	 	5)/16            ;Compute segment of TPA
+ 0008  A3 0103 R	 	        MOV     [LTPA],AX
+ 000B  A1 0002	 	 	        MOV     AX,WORD PTR DS:[2]
+ 	 	 	 	        ENDIF
+ 	 	 	 	
+ 000E  8C 1E 0105 R	 	        MOV     [MYSEG],DS
+ 0012  A3 01A3 R	 	        MOV     [MEMSIZ],AX
+ 0015  2D 010C 90	 	        SUB     AX,TRNLEN               ;Subtra
+	 	 	 	ct size of transient
+ 0019  A3 01A0 R	 	        MOV     [TRNSEG],AX
+ 001C  E8 0294 R	 	        CALL    SETVECT
+ 001F  E8 0230 R	 	        CALL    LOADCOM
+ 0022  E8 027C R	 	        CALL    CHKSUM
+ 0025  89 16 01A5 R	 	        MOV     [SUM],DX
+ 	 	 	 	
+ 	 	 	 	        IF MSVER
+ 	 	 	 	        ENDIF
+ 0029  BA 0059 R	 	        MOV     DX,OFFSET RESGROUP:HEADER
+ 002C  B4 09	 	 	        MOV     AH,PRINTBUF
+ 002E  CD 21	 	 	        INT     33
+ 	 	 	 	        ENDIF
+ 	 	 	 	        ENDIF
+ 	 	 	 	
+ 0030  BA 013F R	 	        MOV     DX,OFFSET RESGROUP:BATFCB
+ 0033  B4 0F	 	 	        MOV     AH,OPEN
+ 0035  CD 21	 	 	        INT     33                      ;See if
+	 	 	 	 AUTOEXEC.BAT exists
+ 0037  C7 06 014D R 0001	        MOV     WORD PTR[BATFCB+RECLEN],1      
+	 	 	 	 ;Set record length to 1
+ 003D  0A C0	 	 	        OR      AL,AL                   ;Zero m
+	 	 	 	eans file found
+ 003F  74 15	 	 	        JZ      DRV0
+ 0041  C6 06 0178 R 00	 	        MOV     [BATCH],0               ;Not fo
+	 	 	 	und--turn off batch job
+ 0046  B8 09E1 R	 	        MOV     AX,OFFSET TRANGROUP:DATINIT
+ 0049  A3 01A7 R	 	        MOV     WORD PTR[INITADD],AX
+ 004C  A1 01A0 R	 	        MOV     AX,[TRNSEG]
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-18
+
+
+
+ 004F  A3 01A9 R	 	        MOV     WORD PTR[INITADD+2],AX
+ 0052  FF 1E 01A7 R	 	        CALL    DWORD PTR DS:[INITADD]
+ 	 	 	 	
+ 	 	 	 	        ENDIF
+ 	 	 	 	
+ 0056	 	 	 	DRV0:
+ 0056  E9 0165 R	 	        JMP     HAVCOM
+ 	 	 	 	
+ 	 	 	 	
+ 	 	 	 	        IF MSVER
+ 0059  0D 0A 43 6F 6D 6D	HEADER  DB      13,10,"Command v. 1.17"
+       61 6E 64 20 76 2E	
+       20 31 2E 31 37	 	
+ 	 	 	 	        ENDIF
+ 006A  0D 0A 24	 	 	        DB      13,10,"$"
+ 	 	 	 	        ENDIF
+ 	 	 	 	
+ 	 	 	 	        ENDIF
+ 	 	 	 	
+ = 006D	 	 	 	INITSIZE        EQU     $-ZERO5
+ 006D	 	 	 	INIT    ENDS
+ 	 	 	 	
+ 	 	 	 	;This TAIL segment is used to produce a PARA al
+	 	 	 	igned label in the resident
+ 	 	 	 	; group which is the location where the transie
+	 	 	 	nt segments will be loaded
+ 	 	 	 	; initialy.
+ 	 	 	 	
+ 0000	 	 	 	TAIL    SEGMENT PARA
+ 0000	 	 	 	        ORG     0
+ 0000	 	 	 	TRANSTART       LABEL   WORD
+ 0000	 	 	 	TAIL    ENDS
+ 	 	 	 	
+ 	 	 	 	;**********************************************
+	 	 	 	**********************
+ 	 	 	 	;START OF TRANSIENT PORTION
+ 	 	 	 	;This code is loaded at the end of memory and m
+	 	 	 	ay be overwritten by
+ 	 	 	 	;memory-intensive user programs.
+ 	 	 	 	
+ 0000	 	 	 	TRANCODE        SEGMENT PARA
+ 	 	 	 	ASSUME  CS:TRANGROUP,DS:TRANGROUP,ES:TRANGROUP,
+	 	 	 	SS:TRANGROUP
+ 	 	 	 	
+ = 0001	 	 	 	WSWITCH EQU     1               ;Wide display d
+	 	 	 	uring DIR
+ = 0002	 	 	 	PSWITCH EQU     2               ;Pause (or Page
+	 	 	 	) mode during DIR
+ = 0004	 	 	 	VSWITCH EQU     4               ;Verify during 
+	 	 	 	COPY
+ = 0008	 	 	 	ASWITCH EQU     8               ;ASCII mode dur
+	 	 	 	ing COPY
+ = 0010	 	 	 	BSWITCH EQU     10H             ;Binary mode du
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-19
+
+
+
+	 	 	 	ring COPY
+ 	 	 	 	
+ 0000	 	 	 	        ORG     0
+ = 0000	 	 	 	ZERO6    =       $
+ 	 	 	 	
+ 0100	 	 	 	        ORG     100H            ;Allow for 100H
+	 	 	 	 parameter area
+ 	 	 	 	
+ 0100	 	 	 	SETDRV:
+ 0100  B4 0E	 	 	        MOV     AH,SELDRV
+ 0102  CD 21	 	 	        INT     21H
+ 0104	 	 	 	COMMAND:
+ 0104  FC	 	 	        CLD
+ 0105  8C C8	 	 	        MOV     AX,CS
+ 0107  8E D0	 	 	        MOV     SS,AX
+ 0109  BC 019B R	 	        MOV     SP,OFFSET TRANGROUP:STACK
+ 010C  8E C0	 	 	        MOV     ES,AX
+ 010E  8E D8	 	 	        MOV     DS,AX
+ 0110  FB	 	 	        STI
+ 0111  B8 2E00	 	 	        MOV     AX,46*100H
+ 0114  B2 00	 	 	        MOV     DL,0
+ 0116  CD 21	 	 	        INT     33              ;Turn off verif
+	 	 	 	y after write
+ 0118  8C C8	 	 	        MOV     AX,CS           ;Get segment we
+	 	 	 	're in
+ 011A  2B 06 0080 R	 	        SUB     AX,[TPA]        ;AX=size ot TPA
+	 	 	 	 in paragraphs
+ 011E  BA 0010	 	 	        MOV     DX,16
+ 0121  F7 E2	 	 	        MUL     DX              ;DX:AX=size of 
+	 	 	 	TPA in bytes
+ 0123  0B D2	 	 	        OR      DX,DX           ;See if over 64
+	 	 	 	K
+ 0125  74 03	 	 	        JZ      SAVSIZ          ;OK if not
+ 0127  B8 FFFF	 	 	        MOV     AX,-1           ;If so, limit t
+	 	 	 	o 65535 bytes
+ 012A	 	 	 	SAVSIZ:
+ 012A  A3 0092 R	 	        MOV     [BYTCNT],AX     ;Max no. of byt
+	 	 	 	es that can be buffered
+ 012D  E8 0541 R	 	        CALL    CRLF2
+ 0130	 	 	 	GETCOM:
+ 0130  B4 19	 	 	        MOV     AH,GETDRV
+ 0132  CD 21	 	 	        INT     21H
+ 0134  A2 0086 R	 	        MOV     [CURDRV],AL
+ 0137  04 41	 	 	        ADD     AL,"A"
+ 0139  E8 0B8A R	 	        CALL    OUT             ;Print letter f
+	 	 	 	or default drive
+ 013C  B0 3A	 	 	        MOV     AL,SYM
+ 013E  E8 0B8A R	 	        CALL    OUT
+ 0141  8E 1E 0082 R	 	        MOV     DS,[RESSEG]     ;All batch work
+	 	 	 	 must use resident seg.
+ 	 	 	 	ASSUME  DS:RESGROUP
+ 0145  F6 06 0178 R FF	 	        TEST    [BATCH],-1
+ 014A  75 54	 	 	        JNZ     READBAT
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-20
+
+
+
+ 014C  0E	 	 	        PUSH    CS
+ 014D  1F	 	 	        POP     DS              ;Need local seg
+	 	 	 	ment to point to buffer
+ 	 	 	 	ASSUME  DS:TRANGROUP
+ 014E  BA 0252 R	 	        MOV     DX,OFFSET TRANGROUP:COMBUF
+ 0151  B4 0A	 	 	        MOV     AH,INBUF
+ 0153  CD 21	 	 	        INT     21H             ;Get a command
+ 0155  E9 01D9 R	 	        JMP     DOCOM
+ 	 	 	 	
+ 	 	 	 	;All batch proccessing has DS set to segment of
+	 	 	 	 resident portion
+ 	 	 	 	ASSUME  DS:RESGROUP
+ 0158	 	 	 	NEEDPARM:
+ 0158  E8 09A2 R	 	        CALL    GETBATBYT
+ 015B  3C 25	 	 	        CMP     AL,"%"          ;Check for two 
+	 	 	 	consecutive %
+ 015D  74 63	 	 	        JZ      SAVBATBYT
+ 015F  3C 0D	 	 	        CMP     AL,13           ;Check for end-
+	 	 	 	of-line
+ 0161  74 5F	 	 	        JZ      SAVBATBYT
+ 0163  2C 30	 	 	        SUB     AL,"0"
+ 0165  72 54	 	 	        JB      RDBAT           ;Ignore paramet
+	 	 	 	er reference if invalid
+ 0167  3C 09	 	 	        CMP     AL,9
+ 0169  77 50	 	 	        JA      RDBAT
+ 016B  98	 	 	        CBW
+ 016C  8B F0	 	 	        MOV     SI,AX
+ 016E  D1 E6	 	 	        SHL     SI,1            ;Two bytes per 
+	 	 	 	entry
+ 0170  8B B4 0164 R	 	        MOV     SI,[SI+OFFSET RESGROUP:PARMTAB]
+	 	 	 	 ;Get pointer to corresponding parameter
+ 0174  83 FE FF	 	 	        CMP     SI,-1           ;Check if param
+	 	 	 	eter exists
+ 0177  74 42	 	 	        JZ      RDBAT           ;Ignore if it d
+	 	 	 	oesn't
+ 0179  B4 02	 	 	        MOV     AH,OUTCH
+ 017B	 	 	 	RDPARM:
+ 017B  AC	 	 	        LODSB           ;From resident segment
+ 017C  3C 0D	 	 	        CMP     AL,0DH          ;Check for end 
+	 	 	 	of parameter
+ 017E  74 3B	 	 	        JZ      RDBAT
+ 0180  AA	 	 	        STOSB           ;To transient segment
+ 0181  8A D0	 	 	        MOV     DL,AL
+ 0183  CD 21	 	 	        INT     33              ;Display paramt
+	 	 	 	ers too
+ 0185  EB F4	 	 	        JMP     SHORT RDPARM
+ 	 	 	 	
+ 0187	 	 	 	PROMPTBAT:
+ 0187  B4 09	 	 	        MOV     AH,PRINTBUF
+ 0189  BA 0102 R	 	        MOV     DX,OFFSET RESGROUP:NEEDBAT
+ 018C  CD 21	 	 	        INT     33              ;Prompt for bat
+	 	 	 	ch file
+ 018E  B4 09	 	 	        MOV     AH,PRINTBUF
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-21
+
+
+
+ 0190  BA 00E0 R	 	        MOV     DX,OFFSET RESGROUP:PROMPT
+ 0193  CD 21	 	 	        INT     33
+ 0195  B8 0C01	 	 	        MOV     AX,0C00H+INCHAR
+ 0198  CD 21	 	 	        INT     33
+ 019A  E9 0104 R	 	        JMP     COMMAND
+ 	 	 	 	
+ 019D  E9 03DE R	 	BADCOMJ1:JMP    BADCOM
+ 	 	 	 	
+ 01A0	 	 	 	READBAT:
+ 01A0  BA 013F R	 	        MOV     DX,OFFSET RESGROUP:BATFCB
+ 01A3  B4 0F	 	 	        MOV     AH,OPEN
+ 01A5  CD 21	 	 	        INT     33              ;Make sure batc
+	 	 	 	h file still exists
+ 01A7  0A C0	 	 	        OR      AL,AL
+ 01A9  75 DC	 	 	        JNZ     PROMPTBAT       ;If OPEN fails,
+	 	 	 	 prompt for disk
+ 01AB  C7 06 014D R 0001	        MOV     WORD PTR [BATFCB+RECLEN],1
+ 01B1  BA 01A2 R	 	        MOV     DX,OFFSET RESGROUP:BATBYT
+ 01B4  B4 1A	 	 	        MOV     AH,SETDMA
+ 01B6  CD 21	 	 	        INT     33
+ 01B8  BF 0254 R	 	        MOV     DI,OFFSET TRANGROUP:COMBUF+2
+ 01BB	 	 	 	RDBAT:
+ 01BB  E8 09A2 R	 	        CALL    GETBATBYT
+ 01BE  3C 25	 	 	        CMP     AL,"%"          ;Check for para
+	 	 	 	meter
+ 01C0  74 96	 	 	        JZ      NEEDPARM
+ 01C2	 	 	 	SAVBATBYT:
+ 01C2  AA	 	 	        STOSB
+ 01C3  E8 0B8A R	 	        CALL    OUT             ;Display batche
+	 	 	 	d command line
+ 01C6  3C 0D	 	 	        CMP     AL,0DH
+ 01C8  75 F1	 	 	        JNZ     RDBAT
+ 01CA  81 EF 0255 R	 	        SUB     DI,OFFSET TRANGROUP:COMBUF+3
+ 01CE  8B C7	 	 	        MOV     AX,DI
+ 01D0  26: A2 0253 R	 	        MOV     ES:[COMBUF+1],AL        ;Set le
+	 	 	 	ngth of line
+ 01D4  E8 09A2 R	 	        CALL    GETBATBYT       ;Eat linefeed
+ 01D7  0E	 	 	        PUSH    CS
+ 01D8  1F	 	 	        POP     DS              ;Go back to loc
+	 	 	 	al segment
+ 	 	 	 	ASSUME DS:TRANGROUP
+ 01D9	 	 	 	DOCOM:
+ 	 	 	 	;All segments are local for command line proces
+	 	 	 	sing
+ 01D9  B0 0A	 	 	        MOV     AL,10
+ 01DB  E8 0B8A R	 	        CALL    OUT
+ 01DE  BE 0254 R	 	        MOV     SI,OFFSET TRANGROUP:COMBUF+2
+ 01E1  BF 009A R	 	        MOV     DI,OFFSET TRANGROUP:IDLEN
+ 01E4  B8 2901	 	 	        MOV     AX,2901H        ;Make FCB with 
+	 	 	 	blank scan-off
+ 01E7  CD 21	 	 	        INT     21H
+ 01E9  3C 01	 	 	        CMP     AL,1            ;Check for ambi
+	 	 	 	guous command name
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-22
+
+
+
+ 01EB  74 B0	 	 	        JZ      BADCOMJ1        ;Ambiguous comm
+	 	 	 	ands not allowed
+ 01ED  3C FF	 	 	        CMP     AL,-1
+ 01EF  75 03	 	 	        JNZ     DRVGD
+ 01F1  E9 0298 R	 	        JMP     DRVBAD
+ 01F4	 	 	 	DRVGD:
+ 01F4  8A 05	 	 	        MOV     AL,[DI]
+ 01F6  A2 0091 R	 	        MOV     [SPECDRV],AL
+ 01F9  B0 20	 	 	        MOV     AL," "
+ 01FB  B9 0009	 	 	        MOV     CX,9
+ 01FE  47	 	 	        INC     DI
+ 01FF  F2/ AE	 	 	        REPNE   SCASB           ;Count no. of l
+	 	 	 	etters in command name
+ 0201  B0 09	 	 	        MOV     AL,9
+ 0203  2A C1	 	 	        SUB     AL,CL
+ 0205  A2 009A R	 	        MOV     [IDLEN],AL
+ 0208  BF 0081	 	 	        MOV     DI,81H
+ 020B  B9 0000	 	 	        MOV     CX,0
+ 020E  56	 	 	        PUSH    SI
+ 020F	 	 	 	COMTAIL:
+ 020F  AC	 	 	        LODSB
+ 0210  AA	 	 	        STOSB           ;Move command tail to 8
+	 	 	 	0H
+ 0211  3C 0D	 	 	        CMP     AL,13
+ 0213  E0 FA	 	 	        LOOPNZ  COMTAIL
+ 0215  F6 D1	 	 	        NOT     CL
+ 0217  88 0E 0080	 	        MOV     BYTE PTR DS:[80H],CL
+ 021B  5E	 	 	        POP     SI
+ 	 	 	 	;If the command has 0 parameters must check her
+	 	 	 	e for
+ 	 	 	 	;any switches that might be present.
+ 	 	 	 	;SI -> first character after the command.
+ 021C  C6 06 008F R 00	 	        MOV     [FLAGER],0      ;Set error flag
+	 	 	 	 before any calls to switch 
+ 0221  E8 0260 R	 	        CALL    SWITCH          ;Is the next ch
+	 	 	 	aracter a "/"
+ 0224  A3 0089 R	 	        MOV     [COMSW],AX
+ 0227  BF 005C	 	 	        MOV     DI,FCB
+ 022A  B8 2901	 	 	        MOV     AX,2901H
+ 022D  CD 21	 	 	        INT     21H
+ 022F  A2 0087 R	 	        MOV     [PARM1],AL      ;Save result of
+	 	 	 	 parse
+ 0232  E8 0260 R	 	        CALL    SWITCH
+ 0235  A3 008B R	 	        MOV     [ARG1S],AX
+ 0238  BF 006C	 	 	        MOV     DI,FCB+10H
+ 023B  B8 2901	 	 	        MOV     AX,2901H
+ 023E  CD 21	 	 	        INT     21H             ;Parse file nam
+	 	 	 	e
+ 0240  A2 0088 R	 	        MOV     [PARM2],AL      ;Save result
+ 0243  E8 0260 R	 	        CALL    SWITCH
+ 0246  A3 008D R	 	        MOV     [ARG2S],AX
+ 0249  A0 009A R	 	        MOV     AL,[IDLEN]
+ 024C  8A 16 0091 R	 	        MOV     DL,[SPECDRV]
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-23
+
+
+
+ 0250  0A D2	 	 	        OR      DL,DL           ;Check if drive
+	 	 	 	 was specified
+ 0252  74 03	 	 	        JZ      OK
+ 0254  E9 02D6 R	 	        JMP     DRVCHK
+ 0257  FE C8	 	 	OK:     DEC     AL              ;Check for null
+	 	 	 	 command
+ 0259  75 43	 	 	        JNZ     FNDCOM
+ 025B  E9 0130 R	 	        JMP     GETCOM
+ 	 	 	 	
+ 025E	 	 	 	RETSW:
+ 025E  93	 	 	        XCHG    AX,BX           ;Put switches i
+	 	 	 	n AX
+ 025F  C3	 	 	        RET
+ 	 	 	 	
+ 0260	 	 	 	SWITCH:
+ 0260  33 DB	 	 	        XOR     BX,BX           ;Initialize - n
+	 	 	 	o switches set
+ 0262	 	 	 	SWLOOP:
+ 0262  E8 09BD R	 	        CALL    SCANOFF         ;Skip any delim
+	 	 	 	iters
+ 0265  3C 2F	 	 	        CMP     AL,"/"          ;Is it a switch
+	 	 	 	 specifier?
+ 0267  75 F5	 	 	        JNZ     RETSW           ;No -- we're fi
+	 	 	 	nished
+ 0269  46	 	 	        INC     SI              ;Skip over "/"
+ 026A  E8 09BD R	 	        CALL    SCANOFF
+ 026D  46	 	 	        INC     SI
+ 	 	 	 	;Convert lower case input to upper case
+ 026E  3C 61	 	 	        CMP     AL,"a"
+ 0270  72 06	 	 	        JB      SAVCHR
+ 0272  3C 7A	 	 	        CMP     AL,"z"
+ 0274  77 02	 	 	        JA      SAVCHR
+ 0276  2C 20	 	 	        SUB     AL,20H          ;Lower-case cha
+	 	 	 	nged to upper-case
+ 0278	 	 	 	SAVCHR:
+ 0278  BF 0293 R	 	        MOV     DI,OFFSET TRANGROUP:SWLIST
+ 027B  B9 0005 90	 	        MOV     CX,SWCOUNT
+ 027F  F2/ AE	 	 	        REPNE   SCASB                   ;Look f
+	 	 	 	or matching switch
+ 0281  75 09	 	 	        JNZ     BADSW
+ 0283  B8 0001	 	 	        MOV     AX,1
+ 0286  D3 E0	 	 	        SHL     AX,CL           ;Set a bit for 
+	 	 	 	the switch
+ 0288  0B D8	 	 	        OR      BX,AX
+ 028A  EB D6	 	 	        JMP     SHORT SWLOOP
+ 	 	 	 	
+ 028C	 	 	 	BADSW:
+ 028C  C6 06 008F R 01	 	        MOV     [FLAGER],1      ;Record error i
+	 	 	 	n switch
+ 0291  EB CF	 	 	        JMP     SHORT SWLOOP
+ 	 	 	 	
+ 0293  42 41 56 50 57	 	SWLIST  DB      "BAVPW"
+ = 0005	 	 	 	SWCOUNT EQU     $-SWLIST
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-24
+
+
+
+ 	 	 	 	
+ 0298	 	 	 	DRVBAD:
+ 0298  BA 011D R	 	        MOV     DX,OFFSET TRANGROUP:BADDRV
+ 029B  E9 03E1 R	 	        JMP     ERROR
+ 	 	 	 	
+ 029E	 	 	 	FNDCOM:
+ 029E  BE 01F9 R	 	        MOV     SI,OFFSET TRANGROUP:COMTAB     
+	 	 	 	 ;Prepare to search command table
+ 02A1  B5 00	 	 	        MOV     CH,0
+ 02A3	 	 	 	FINDCOM:
+ 02A3  BF 009A R	 	        MOV     DI,OFFSET TRANGROUP:IDLEN
+ 02A6  8A 0C	 	 	        MOV     CL,[SI]
+ 02A8  E3 32	 	 	        JCXZ    EXTERNAL
+ 02AA  F3/ A6	 	 	        REPE    CMPSB
+ 02AC  9F	 	 	        LAHF
+ 02AD  03 F1	 	 	        ADD     SI,CX           ;Bump to next p
+	 	 	 	osition without affecting flags
+ 02AF  9E	 	 	        SAHF
+ 02B0  AC	 	 	        LODSB           ;Get flag for drive che
+	 	 	 	ck
+ 02B1  A2 0084 R	 	        MOV     [CHKDRV],AL
+ 02B4  AD	 	 	        LODSW           ;Get address of command
+ 02B5  75 EC	 	 	        JNZ     FINDCOM
+ 02B7  8B D0	 	 	        MOV     DX,AX
+ 02B9  80 3E 0084 R 00	 	        CMP     [CHKDRV],0
+ 02BE  74 0B	 	 	        JZ      NOCHECK
+ 02C0  A0 0087 R	 	        MOV     AL,[PARM1]
+ 02C3  0A 06 0088 R	 	        OR      AL,[PARM2]      ;Check if eithe
+	 	 	 	r parm. had invalid drive
+ 02C7  3C FF	 	 	        CMP     AL,-1
+ 02C9  74 CD	 	 	        JZ      DRVBAD
+ 02CB  FF D2	 	 	NOCHECK:CALL    DX
+ 02CD  E9 0104 R	 	COMJMP: JMP     COMMAND
+ 	 	 	 	
+ 02D0  E9 03DE R	 	BADCOMJ:JMP     BADCOM
+ 	 	 	 	
+ 02D3	 	 	 	SETDRV1:
+ 02D3  E9 0100 R	 	        JMP     SETDRV
+ 	 	 	 	
+ 02D6	 	 	 	DRVCHK:
+ 02D6  FE CA	 	 	        DEC     DL              ;Adjust for cor
+	 	 	 	rect drive number
+ 02D8  FE C8	 	 	        DEC     AL              ;Check if anyth
+	 	 	 	ing else is on line
+ 02DA  74 F7	 	 	        JZ      SETDRV1
+ 02DC	 	 	 	EXTERNAL:
+ 02DC  A0 0091 R	 	        MOV     AL,[SPECDRV]
+ 02DF  A2 009A R	 	        MOV     [IDLEN],AL
+ 02E2  C7 06 00A3 R 4F43	        MOV     WORD PTR[COM],4F00H+"C" ;"CO"
+ 02E8  C6 06 00A5 R 4D	 	        MOV     BYTE PTR[COM+2],"M"
+ 02ED  BA 009A R	 	        MOV     DX,OFFSET TRANGROUP:IDLEN
+ 02F0  B4 0F	 	 	        MOV     AH,OPEN
+ 02F2  CD 21	 	 	        INT     33              ;Check if comma
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-25
+
+
+
+	 	 	 	nd to be executed
+ 02F4  A2 0085 R	 	        MOV     [FILTYP],AL     ;0 for COM file
+	 	 	 	s, -1 for EXE files
+ 02F7  0A C0	 	 	        OR      AL,AL
+ 02F9  74 7B	 	 	        JZ      EXECUTE
+ 02FB  C7 06 00A3 R 5845	        MOV     WORD PTR[COM],5800H+"E" ;"EX"
+ 0301  C6 06 00A5 R 45	 	        MOV     BYTE PTR[COM+2],"E"
+ 0306  CD 21	 	 	        INT     33              ;Check for EXE 
+	 	 	 	file
+ 0308  0A C0	 	 	        OR      AL,AL
+ 030A  74 6A	 	 	        JZ      EXECUTE
+ 030C  C7 06 00A3 R 4142	        MOV     WORD PTR[COM],4100H+"B" ;"BA"
+ 0312  C6 06 00A5 R 54	 	        MOV     BYTE PTR[COM+2],"T"
+ 0317  CD 21	 	 	        INT     33              ;Check if batch
+	 	 	 	 file to be executed
+ 0319  0A C0	 	 	        OR      AL,AL
+ 031B  75 B3	 	 	        JNZ     BADCOMJ
+ 031D	 	 	 	BATCOM:
+ 	 	 	 	;Batch parameters are read with ES set to segme
+	 	 	 	nt of resident part
+ 031D  8E 06 0082 R	 	        MOV     ES,[RESSEG]
+ 	 	 	 	ASSUME  ES:RESGROUP
+ 0321  BF 0164 R	 	        MOV     DI,OFFSET RESGROUP:PARMTAB
+ 0324  B8 FFFF	 	 	        MOV     AX,-1
+ 0327  B9 000A	 	 	        MOV     CX,10
+ 032A  F3/ AB	 	 	        REP     STOSW           ;Zero parameter
+	 	 	 	 pointer table
+ 032C  BE 0254 R	 	        MOV     SI,OFFSET TRANGROUP:COMBUF+2
+ 032F  BF 0000 R	 	        MOV     DI,OFFSET RESGROUP:PARMBUF
+ 0332  BB 0164 R	 	        MOV     BX,OFFSET RESGROUP:PARMTAB
+ 0335	 	 	 	EACHPARM:
+ 0335  E8 09BD R	 	        CALL    SCANOFF
+ 0338  3C 0D	 	 	        CMP     AL,0DH
+ 033A  74 1B	 	 	        JZ      HAVPARM
+ 033C  26: 89 3F	 	        MOV     ES:[BX],DI              ;Set po
+	 	 	 	inter table to point to actual parameter
+ 033F  43	 	 	        INC     BX
+ 0340  43	 	 	        INC     BX
+ 0341	 	 	 	MOVPARM:
+ 0341  AC	 	 	        LODSB
+ 0342  E8 09C5 R	 	        CALL    DELIM
+ 0345  74 07	 	 	        JZ      ENDPARM         ;Check for end 
+	 	 	 	of parameter
+ 0347  AA	 	 	        STOSB
+ 0348  3C 0D	 	 	        CMP     AL,0DH
+ 034A  74 0B	 	 	        JZ      HAVPARM
+ 034C  EB F3	 	 	        JMP     SHORT MOVPARM
+ 034E	 	 	 	ENDPARM:
+ 034E  B0 0D	 	 	        MOV     AL,0DH
+ 0350  AA	 	 	        STOSB           ;End-of-parameter marke
+	 	 	 	r
+ 0351  81 FB 0178 R	 	        CMP     BX,OFFSET RESGROUP:PARMTAB+20  
+	 	 	 	 ;Maximum number of parameters?
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-26
+
+
+
+ 0355  72 DE	 	 	        JB      EACHPARM
+ 0357	 	 	 	HAVPARM:
+ 0357  BE 009A R	 	        MOV     SI,OFFSET TRANGROUP:IDLEN
+ 035A  BF 013F R	 	        MOV     DI,OFFSET RESGROUP:BATFCB
+ 035D  B9 0010	 	 	        MOV     CX,16
+ 0360  F3/ A5	 	 	        REP     MOVSW           ;Move into priv
+	 	 	 	ate batch FCB
+ 0362  33 C0	 	 	        XOR     AX,AX
+ 0364  06	 	 	        PUSH    ES
+ 0365  1F	 	 	        POP     DS                      ;Simply
+	 	 	 	 batch FCB setup
+ 	 	 	 	ASSUME  DS:RESGROUP
+ 0366  A3 0160 R	 	        MOV     WORD PTR[BATFCB+RR],AX
+ 0369  A3 0162 R	 	        MOV     WORD PTR[BATFCB+RR+2],AX       
+	 	 	 	 ;Zero RR field
+ 036C  40	 	 	        INC     AX
+ 036D  A3 014D R	 	        MOV     WORD PTR[BATFCB+RECLEN],AX     
+	 	 	 	 ;Set record length to 1 byte
+ 0370  A2 0178 R	 	        MOV     [BATCH],AL              ;Flag b
+	 	 	 	atch job in progress
+ 0373  E9 0104 R	 	        JMP     COMMAND
+ 	 	 	 	ASSUME  DS:TRANGROUP,ES:TRANGROUP
+ 	 	 	 	
+ 0376	 	 	 	EXECUTE:
+ 0376  A1 00AA R	 	        MOV     AX,WORD PTR[IDLEN+16]
+ 0379  0B 06 00AC R	 	        OR      AX,WORD PTR[IDLEN+18]          
+	 	 	 	 ;See if zero length
+ 037D  74 5F	 	 	        JZ      BADCOM                  ;If so,
+	 	 	 	 error
+ 037F  33 C0	 	 	        XOR     AX,AX
+ 0381  A3 00BB R	 	        MOV     WORD PTR[IDLEN+RR],AX
+ 0384  A3 00BD R	 	        MOV     WORD PTR[IDLEN+RR+2],AX        
+	 	 	 	 ;Set RR field to zero
+ 0387  40	 	 	        INC     AX
+ 0388  A3 00A8 R	 	        MOV     WORD PTR[IDLEN+RECLEN],AX      
+	 	 	 	 ;Set record length field to 1
+ 038B  8B 16 0080 R	 	        MOV     DX,[TPA]
+ 038F  8B DA	 	 	        MOV     BX,DX
+ 0391  B4 26	 	 	        MOV     AH,SETBASE
+ 0393  CD 21	 	 	        INT     21H
+ 0395  F6 06 0085 R FF	 	        TEST    [FILTYP],-1             ;Check 
+	 	 	 	if file is COM or EXE
+ 039A  74 03	 	 	        JZ      COMLOAD
+ 039C  E9 0B93 R	 	        JMP     EXELOAD
+ 039F  1E	 	 	COMLOAD:PUSH    DS
+ 03A0  8E DA	 	 	        MOV     DS,DX
+ 03A2  BA 0100	 	 	        MOV     DX,100H
+ 03A5  B4 1A	 	 	        MOV     AH,SETDMA
+ 03A7  CD 21	 	 	        INT     21H
+ 03A9  1F	 	 	        POP     DS
+ 03AA  8B 0E 0092 R	 	        MOV     CX,[BYTCNT]
+ 03AE  81 E9 0100	 	        SUB     CX,100H
+ 03B2  BA 009A R	 	        MOV     DX,OFFSET TRANGROUP:IDLEN
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-27
+
+
+
+ 03B5  B4 27	 	 	        MOV     AH,RDBLK
+ 03B7  CD 21	 	 	        INT     21H
+ 03B9  FE C8	 	 	        DEC     AL
+ 03BB  BA 00FC R	 	        MOV     DX,OFFSET TRANGROUP:TOOBIG
+ 03BE  75 21	 	 	        JNZ     ERROR
+ 	 	 	 	;Set up exit conditions
+ 03C0  8B 0E 0092 R	 	        MOV     CX,[BYTCNT]
+ 03C4  8E DB	 	 	        MOV     DS,BX
+ 03C6  8E C3	 	 	        MOV     ES,BX
+ 03C8  FA	 	 	        CLI
+ 03C9  8E D3	 	 	        MOV     SS,BX
+ 03CB  8B E1	 	 	        MOV     SP,CX
+ 03CD  FB	 	 	        STI
+ 03CE  81 E9 0100	 	        SUB     CX,100H         ;Allow some sta
+	 	 	 	ck space
+ 03D2  33 C0	 	 	        XOR     AX,AX
+ 03D4  50	 	 	        PUSH    AX
+ 03D5  B8 0100	 	 	        MOV     AX,100H
+ 03D8  53	 	 	        PUSH    BX
+ 03D9  50	 	 	        PUSH    AX
+ 03DA  E8 0C96 R	 	        CALL    SETUP
+ 03DD	 	 	 	XXX     PROC    FAR
+ 03DD  CB	 	 	        RET
+ 03DE	 	 	 	XXX     ENDP
+ 03DE	 	 	 	BADCOM:
+ 03DE  BA 0000 R	 	        MOV     DX,OFFSET TRANGROUP:BADNAM
+ 03E1	 	 	 	ERROR:
+ 03E1  B4 09	 	 	        MOV     AH,PRINTBUF
+ 03E3  CD 21	 	 	        INT     21H
+ 03E5  E9 0104 R	 	        JMP     COMMAND
+ 	 	 	 	
+ 03E8	 	 	 	CHKCNT:
+ 03E8  F7 06 0098 R FFFF	        TEST    [FILECNT],-1
+ 03EE  75 05	 	 	        JNZ     ENDDIR
+ 03F0  BA 0044 R	 	        MOV     DX,OFFSET TRANGROUP:NOTFND
+ 03F3  EB EC	 	 	        JMP     ERROR
+ 	 	 	 	
+ 03F5	 	 	 	ENDDIR:
+ 	 	 	 	;Make sure last line ends with CR/LF
+ 03F5  A0 0097 R	 	        MOV     AL,[LINLEN]
+ 03F8  3A 06 0096 R	 	        CMP     AL,[LINCNT]     ;Will be equal 
+	 	 	 	if just had CR/LF
+ 03FC  74 03	 	 	        JZ      MESSAGE
+ 03FE  E8 0541 R	 	        CALL    CRLF2
+ 0401	 	 	 	MESSAGE:                
+ 0401  8B 36 0098 R	 	        MOV     SI,[FILECNT]
+ 0405  33 FF	 	 	        XOR     DI,DI
+ 0407  E8 0553 R	 	        CALL    DISP32BITS
+ 040A  BA 00F3 R	 	        MOV     DX,OFFSET TRANGROUP:DIRMES
+ 040D  B4 09	 	 	        MOV     AH,PRINTBUF
+ 040F  CD 21	 	 	        INT     21H
+ 0411  C3	 	 	        RET
+ 	 	 	 	
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-28
+
+
+
+ 0412	 	 	 	CATALOG:
+ 0412  B0 3F	 	 	        MOV     AL,"?"                  ;*.* is
+	 	 	 	 default file spec.
+ 0414  BF 005D	 	 	        MOV     DI,5DH
+ 0417  B9 000B	 	 	        MOV     CX,11
+ 041A  F3/ AA	 	 	        REP     STOSB
+ 041C  BE 0081	 	 	        MOV     SI,81H
+ 041F  E8 0260 R	 	        CALL    SWITCH
+ 0422  BF 005C	 	 	        MOV     DI,5CH
+ 0425  B8 290D	 	 	        MOV     AX,41*100H+0DH          ;Parse 
+	 	 	 	with default name and extension
+ 0428  CD 21	 	 	        INT     33
+ 	 	 	 	
+ 	 	 	 	;Begin by processing any switches that may have
+	 	 	 	 been specified.
+ 	 	 	 	;BITS will contain any information about switch
+	 	 	 	es that was
+ 	 	 	 	;found when the command line was parsed.
+ 	 	 	 	
+ 042A	 	 	 	SETSWT:
+ 042A  A1 0089 R	 	        MOV     AX,[COMSW]              ;Get sw
+	 	 	 	itches from command
+ 042D  0B 06 008B R	 	        OR      AX,[ARG1S]              ;OR in 
+	 	 	 	switches from first parameter
+ 0431  A3 00FB R	 	        MOV     [BITS],AX
+ 0434  C6 06 00FD R 17	 	        MOV     BYTE PTR[FULLSCR],LINPERPAG
+ 0439  A8 01	 	 	        TEST    AL,1                    ;Look f
+	 	 	 	or /W
+ 043B  B0 01	 	 	        MOV     AL,NORMPERLIN
+ 043D  74 02	 	 	        JZ      DIR
+ 043F  B0 05	 	 	        MOV     AL,WIDEPERLIN
+ 0441	 	 	 	DIR:
+ 0441  A2 0097 R	 	        MOV     [LINLEN],AL             ;Set nu
+	 	 	 	mber of entries per line
+ 0444  A2 0096 R	 	        MOV     [LINCNT],AL
+ 0447  C7 06 0098 R 0000	        MOV     [FILECNT],0     ;Keep track of 
+	 	 	 	how many files found
+ 044D  BA 00D6 R	 	        MOV     DX,OFFSET TRANGROUP:DIRBUF     
+	 	 	 	 ;Set Disk transfer address
+ 0450  B4 1A	 	 	        MOV     AH,SETDMA
+ 0452  CD 21	 	 	        INT     21H             
+ 0454  B4 11	 	 	        MOV     AH,SRCHFRST
+ 0456	 	 	 	SHOWDIR:
+ 0456  BA 005C	 	 	        MOV     DX,5CH          ;DX -> Unopened
+	 	 	 	 FCB
+ 0459  CD 21	 	 	        INT     21H             ;Search for a f
+	 	 	 	ile to match FCB
+ 045B  FE C0	 	 	        INC     AL              ;FF = file not 
+	 	 	 	found
+ 045D  75 02	 	 	        JNZ     AGAIN           ;Either an erro
+	 	 	 	r or we are finished
+ 045F  EB 87	 	 	        JMP     CHKCNT
+ 0461	 	 	 	AGAIN:
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-29
+
+
+
+ 0461  FF 06 0098 R	 	        INC     [FILECNT]       ;Keep track of 
+	 	 	 	how many we find
+ 0465  BE 00D7 R	 	        MOV     SI,OFFSET TRANGROUP:DIRBUF+1   
+	 	 	 	 ;SI -> information returned by sys call
+ 0468  E8 0526 R	 	        CALL    SHONAME
+ 046B  F6 06 00FB R 01	 	        TEST    BYTE PTR[BITS],1        ;/W set
+	 	 	 	?
+ 0470  75 78	 	 	        JNZ     NEXENT          ;If so, no size
+	 	 	 	, date, or time
+ 0472  E8 054B R	 	        CALL    DISPSIZE        ;Print size of 
+	 	 	 	file
+ 0475  E8 0539 R	 	        CALL    TWOSPC
+ 0478  A1 00EF R	 	        MOV     AX,WORD PTR[DIRBUF+25]  ;Get da
+	 	 	 	te
+ 047B  0B C0	 	 	        OR      AX,AX
+ 047D  74 6B	 	 	        JZ      NEXENT          ;Skip if no dat
+	 	 	 	e
+ 047F  8B D0	 	 	        MOV     DX,AX
+ 0481  B1 05	 	 	        MOV     CL,5
+ 0483  D3 E8	 	 	        SHR     AX,CL           ;Align month
+ 0485  24 0F	 	 	        AND     AL,0FH
+ 0487  B7 10	 	 	        MOV     BH,"0"-" "      ;Enable zero su
+	 	 	 	ppression
+ 0489  E8 0B76 R	 	        CALL    OUT2
+ 048C  B0 2D	 	 	        MOV     AL,"-"
+ 048E  E8 0B8A R	 	        CALL    OUT
+ 0491  8A C2	 	 	        MOV     AL,DL
+ 0493  24 1F	 	 	        AND     AL,1FH          ;Mask to day
+ 0495  E8 0B76 R	 	        CALL    OUT2
+ 0498  B0 2D	 	 	        MOV     AL,"-"
+ 049A  E8 0B8A R	 	        CALL    OUT
+ 049D  8A C6	 	 	        MOV     AL,DH
+ 049F  D0 E8	 	 	        SHR     AL,1            ;Align year
+ 04A1  05 0050	 	 	        ADD     AX,80           ;Relative 1980
+ 04A4  3C 64	 	 	        CMP     AL,100
+ 04A6  72 02	 	 	        JB      MILLENIUM
+ 04A8  2C 64	 	 	        SUB     AL,100
+ 04AA	 	 	 	MILLENIUM:
+ 04AA  E8 0B76 R	 	        CALL    OUT2
+ 04AD  8B 1E 00ED R	 	        MOV     BX,WORD PTR[DIRBUF+23]  ;Get ti
+	 	 	 	me
+ 04B1  0B DB	 	 	        OR      BX,BX           ;Time field pre
+	 	 	 	sent?
+ 04B3  74 35	 	 	        JZ      NEXENT
+ 04B5  E8 0539 R	 	        CALL    TWOSPC  
+ 04B8  D1 EB	 	 	        SHR     BX,1
+ 04BA  D1 EB	 	 	        SHR     BX,1
+ 04BC  D1 EB	 	 	        SHR     BX,1
+ 04BE  D0 EB	 	 	        SHR     BL,1
+ 04C0  D0 EB	 	 	        SHR     BL,1            ;Hours in BH, m
+	 	 	 	inutes in BL
+ 04C2  8A C7	 	 	        MOV     AL,BH
+ 04C4  B6 61	 	 	        MOV     DH,"a"          ;Assume A.M.
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-30
+
+
+
+ 04C6  3C 0C	 	 	        CMP     AL,12           ;In the afterno
+	 	 	 	on?
+ 04C8  72 06	 	 	        JB      MORN
+ 04CA  B6 70	 	 	        MOV     DH,"p"
+ 04CC  74 02	 	 	        JE      MORN
+ 04CE  2C 0C	 	 	        SUB     AL,12           ;Keep it to 12 
+	 	 	 	hours or less
+ 04D0	 	 	 	MORN:
+ 04D0  0A C0	 	 	        OR      AL,AL           ;Before 1 am?
+ 04D2  75 02	 	 	        JNZ     SHOHOURS
+ 04D4  B0 0C	 	 	        MOV     AL,12
+ 04D6	 	 	 	SHOHOURS:
+ 04D6  B7 10	 	 	        MOV     BH,"0"-" "      ;Enable zero su
+	 	 	 	ppression
+ 04D8  E8 0B76 R	 	        CALL    OUT2
+ 04DB  B0 3A	 	 	        MOV     AL,":"
+ 04DD  E8 0B8A R	 	        CALL    OUT
+ 04E0  8A C3	 	 	        MOV     AL,BL           ;Output minutes
+ 04E2  E8 0B76 R	 	        CALL    OUT2
+ 04E5  8A C6	 	 	        MOV     AL,DH           ;Get "a" or "p"
+ 04E7  E8 0B8A R	 	        CALL    OUT
+ 04EA	 	 	 	NEXENT:
+ 04EA  FE 0E 0096 R	 	        DEC     [LINCNT]
+ 04EE  75 2F	 	 	        JNZ     SAMLIN
+ 04F0	 	 	 	NEXLIN:
+ 04F0  A0 0097 R	 	        MOV     AL,[LINLEN]
+ 04F3  A2 0096 R	 	        MOV     [LINCNT],AL
+ 04F6  E8 0541 R	 	        CALL    CRLF2
+ 04F9  F6 06 00FB R 02	 	        TEST    BYTE PTR[BITS],2        ;/P swi
+	 	 	 	tch present?
+ 04FE  74 1A	 	 	        JZ      SCROLL          ;If not, just c
+	 	 	 	ontinue
+ 0500  FE 0E 00FD R	 	        DEC     BYTE PTR[FULLSCR]
+ 0504  75 14	 	 	        JNZ     SCROLL
+ 0506  C6 06 00FD R 17	 	        MOV     BYTE PTR[FULLSCR],LINPERPAG
+ 050B  B4 09	 	 	        MOV     AH,PRINTBUF
+ 050D  BA 0139 R	 	        MOV     DX,OFFSET TRANGROUP:PAUSMES
+ 0510  CD 21	 	 	        INT     33
+ 0512  B8 0C08	 	 	        MOV     AX,0C08H        ;Wait for any c
+	 	 	 	haracter to be typed
+ 0515  CD 21	 	 	        INT     21H
+ 0517  E8 0541 R	 	        CALL    CRLF2
+ 051A	 	 	 	SCROLL:
+ 051A  B4 12	 	 	        MOV     AH,SRCHNXT
+ 051C  E9 0456 R	 	        JMP     SHOWDIR
+ 	 	 	 	
+ 051F	 	 	 	SAMLIN:
+ 051F  B0 09	 	 	        MOV     AL,9            ;Output a tab
+ 0521  E8 0B8A R	 	        CALL    OUT
+ 0524  EB F4	 	 	        JMP     SHORT SCROLL
+ 	 	 	 	
+ 0526	 	 	 	SHONAME:
+ 0526  B9 0008	 	 	        MOV     CX,8
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-31
+
+
+
+ 0529  E8 0532 R	 	        CALL    OUTCNT
+ 052C  E8 053C R	 	        CALL    ONESPC
+ 052F  B9 0003	 	 	        MOV     CX,3
+ 0532	 	 	 	OUTCNT:
+ 0532  AC	 	 	        LODSB
+ 0533  E8 0B8A R	 	        CALL    OUT
+ 0536  E2 FA	 	 	        LOOP    OUTCNT
+ 0538  C3	 	 	        RET
+ 	 	 	 	
+ 0539	 	 	 	TWOSPC:
+ 0539  E8 053C R	 	        CALL    ONESPC
+ 053C	 	 	 	ONESPC:
+ 053C  B0 20	 	 	        MOV     AL," "
+ 053E  E9 0B8A R	 	        JMP     OUT
+ 	 	 	 	
+ 0541	 	 	 	CRLF2:
+ 0541  B0 0D	 	 	        MOV     AL,13
+ 0543  E8 0B8A R	 	        CALL    OUT
+ 0546  B0 0A	 	 	        MOV     AL,10
+ 0548  E9 0B8A R	 	        JMP     OUT
+ 	 	 	 	
+ 054B	 	 	 	DISPSIZE:
+ 054B  8B 36 00F3 R	 	        MOV     SI,WORD PTR[DIRBUF+29]
+ 054F  8B 3E 00F5 R	 	        MOV     DI,WORD PTR[DIRBUF+31]
+ 0553	 	 	 	DISP32BITS:
+ 	 	 	 	;Prints the 32-bit number DI:SI on the console 
+	 	 	 	in decimal. Uses a total
+ 	 	 	 	;of 9 digit positions with leading blanks.
+ 0553  33 C0	 	 	        XOR     AX,AX
+ 0555  8B D8	 	 	        MOV     BX,AX
+ 0557  8B E8	 	 	        MOV     BP,AX
+ 0559  B9 0020	 	 	        MOV     CX,32
+ 055C	 	 	 	CONVLP:
+ 055C  D1 E6	 	 	        SHL     SI,1
+ 055E  D1 D7	 	 	        RCL     DI,1
+ 0560  95	 	 	        XCHG    AX,BP
+ 0561  E8 05A5 R	 	        CALL    CONVWRD
+ 0564  95	 	 	        XCHG    AX,BP
+ 0565  93	 	 	        XCHG    AX,BX
+ 0566  E8 05A5 R	 	        CALL    CONVWRD
+ 0569  93	 	 	        XCHG    AX,BX
+ 056A  14 00	 	 	        ADC     AL,0
+ 056C  E2 EE	 	 	        LOOP    CONVLP
+ 	 	 	 	; Conversion complete. Print 9-digit number.
+ 056E  B9 1810	 	 	        MOV     CX,1810H        ;Allow leading 
+	 	 	 	zero blanking for 8 digits
+ 0571  92	 	 	        XCHG    DX,AX
+ 0572  E8 0590 R	 	        CALL    DIGIT
+ 0575  93	 	 	        XCHG    AX,BX
+ 0576  E8 057A R	 	        CALL    OUTWORD
+ 0579  95	 	 	        XCHG    AX,BP
+ 057A	 	 	 	OUTWORD:
+ 057A  50	 	 	        PUSH    AX
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-32
+
+
+
+ 057B  8A D4	 	 	        MOV     DL,AH
+ 057D  E8 0581 R	 	        CALL    OUTBYTE
+ 0580  5A	 	 	        POP     DX
+ 0581	 	 	 	OUTBYTE:
+ 0581  8A F2	 	 	        MOV     DH,DL
+ 0583  D0 EA	 	 	        SHR     DL,1
+ 0585  D0 EA	 	 	        SHR     DL,1
+ 0587  D0 EA	 	 	        SHR     DL,1
+ 0589  D0 EA	 	 	        SHR     DL,1
+ 058B  E8 0590 R	 	        CALL    DIGIT
+ 058E  8A D6	 	 	        MOV     DL,DH
+ 0590	 	 	 	DIGIT:
+ 0590  80 E2 0F	 	 	        AND     DL,0FH
+ 0593  74 02	 	 	        JZ      BLANKZER
+ 0595  B1 00	 	 	        MOV     CL,0
+ 0597	 	 	 	BLANKZER:
+ 0597  FE CD	 	 	        DEC     CH
+ 0599  22 CD	 	 	        AND     CL,CH
+ 059B  80 CA 30	 	 	        OR      DL,30H
+ 059E  2A D1	 	 	        SUB     DL,CL
+ 05A0  B4 02	 	 	        MOV     AH,OUTCH
+ 05A2  CD 21	 	 	        INT     21H
+ 05A4  C3	 	 	        RET
+ 	 	 	 	
+ 05A5	 	 	 	CONVWRD:
+ 05A5  12 C0	 	 	        ADC     AL,AL
+ 05A7  27	 	 	        DAA
+ 05A8  86 C4	 	 	        XCHG    AL,AH
+ 05AA  12 C0	 	 	        ADC     AL,AL
+ 05AC  27	 	 	        DAA
+ 05AD  86 C4	 	 	        XCHG    AL,AH
+ 05AF  C3	 	 	RET20:  RET
+ 	 	 	 	
+ 05B0	 	 	 	ERASE:
+ 05B0  B9 000B	 	 	        MOV     CX,11
+ 05B3  BE 005D	 	 	        MOV     SI,FCB+1
+ 05B6	 	 	 	AMBSPEC:        
+ 05B6  AC	 	 	        LODSB
+ 05B7  3C 3F	 	 	        CMP     AL,"?"
+ 05B9  75 02	 	 	        JNZ     ALLFIL
+ 05BB  E2 F9	 	 	        LOOP    AMBSPEC
+ 05BD	 	 	 	ALLFIL: 
+ 05BD  83 F9 00	 	 	        CMP     CX,0
+ 05C0  75 1B	 	 	        JNZ     NOPRMPT
+ 05C2	 	 	 	ASKAGN:         
+ 05C2  BA 01E4 R	 	        MOV     DX,OFFSET TRANGROUP:SUREMES    
+	 	 	 	 ;"Are you sure (Y/N)?"
+ 05C5  B4 09	 	 	        MOV     AH,PRINTBUF
+ 05C7  CD 21	 	 	        INT     21H
+ 05C9  B8 0C01	 	 	        MOV     AX,0C00H+INCHAR
+ 05CC  CD 21	 	 	        INT     21H
+ 05CE  24 5F	 	 	        AND     AL,5FH
+ 05D0  3C 4E	 	 	        CMP     AL,"N"
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-33
+
+
+
+ 05D2  74 DB	 	 	        JZ      RET20
+ 05D4  3C 59	 	 	        CMP     AL,"Y"
+ 05D6  E8 0541 R	 	        CALL    CRLF2
+ 05D9  74 02	 	 	        JZ      NOPRMPT
+ 05DB  EB E5	 	 	        JMP     SHORT ASKAGN
+ 05DD	 	 	 	NOPRMPT:
+ 05DD  B4 13	 	 	        MOV     AH,DELETE
+ 05DF  BB 0044 R	 	        MOV     BX,OFFSET TRANGROUP:NOTFND
+ 05E2  80 3E 005D 20	 	        CMP     BYTE PTR DS:[FCB+1]," " ;Check 
+	 	 	 	if parameter exists
+ 05E7  EB 0A	 	 	        JMP     SHORT OPFILE
+ 05E9	 	 	 	RENAME:
+ 05E9  B4 17	 	 	        MOV     AH,RENAM
+ 05EB  BB 002D R	 	        MOV     BX,OFFSET TRANGROUP:RENERR
+ 05EE  80 3E 006D 20	 	        CMP     BYTE PTR DS:[FCB+16+1]," "  ;Ch
+	 	 	 	eck if parameter exists
+ 05F3	 	 	 	OPFILE:
+ 05F3  BA 001B R	 	        MOV     DX,OFFSET TRANGROUP:MISNAM
+ 05F6  74 0B	 	 	        JZ      ERRJ            ;Error if missi
+	 	 	 	ng parameter
+ 05F8  BA 005C	 	 	        MOV     DX,FCB
+ 05FB  CD 21	 	 	        INT     21H
+ 05FD  FE C0	 	 	        INC     AL
+ 05FF  75 AE	 	 	        JNZ     RET20
+ 0601  8B D3	 	 	        MOV     DX,BX
+ 0603  E9 03E1 R	 	ERRJ:   JMP     ERROR
+ 	 	 	 	
+ 0606	 	 	 	TYPEFIL:
+ 0606  8E 1E 0080 R	 	        MOV     DS,[TPA]
+ 060A  33 D2	 	 	        XOR     DX,DX
+ 060C  B4 1A	 	 	        MOV     AH,SETDMA
+ 060E  CD 21	 	 	        INT     21H
+ 0610  0E	 	 	        PUSH    CS
+ 0611  1F	 	 	        POP     DS
+ 0612  BA 005C	 	 	        MOV     DX,FCB
+ 0615  B4 0F	 	 	        MOV     AH,OPEN
+ 0617  CD 21	 	 	        INT     21H
+ 0619  0A C0	 	 	        OR      AL,AL
+ 061B  BA 0044 R	 	        MOV     DX,OFFSET TRANGROUP:NOTFND
+ 061E  75 E3	 	 	        JNZ     ERRJ
+ 0620  33 C0	 	 	        XOR     AX,AX
+ 0622  A3 007D	 	 	        MOV     WORD PTR DS:[FCB+RR],AX ;Set RR
+	 	 	 	 field
+ 0625  A3 007F	 	 	        MOV     WORD PTR DS:[FCB+RR+2],AX
+ 0628  40	 	 	        INC     AX
+ 0629  A3 006A	 	 	        MOV     WORD PTR DS:[FCB+RECLEN],AX    
+	 	 	 	 ;Set record length
+ 062C  8E 06 0080 R	 	        MOV     ES,[TPA]
+ 0630	 	 	 	TYPELP:
+ 0630  BA 005C	 	 	        MOV     DX,FCB
+ 0633  8B 0E 0092 R	 	        MOV     CX,[BYTCNT]
+ 0637  B4 27	 	 	        MOV     AH,RDBLK
+ 0639  CD 21	 	 	        INT     21H
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-34
+
+
+
+ 063B  E3 12	 	 	        JCXZ    RET30
+ 063D  33 F6	 	 	        XOR     SI,SI           ;Start at 0 in 
+	 	 	 	TPA
+ 063F	 	 	 	OUTLP:
+ 063F  26: AC	 	 	        LODS    BYTE PTR ES:[SI]               
+	 	 	 	 ;In TPA segment
+ 0641  3C 1A	 	 	        CMP     AL,1AH
+ 0643  74 0A	 	 	        JZ      RET30
+ 0645  B4 02	 	 	        MOV     AH,OUTCH
+ 0647  8A D0	 	 	        MOV     DL,AL
+ 0649  CD 21	 	 	        INT     21H
+ 064B  E2 F2	 	 	        LOOP    OUTLP
+ 064D  EB E1	 	 	        JMP     SHORT TYPELP
+ 	 	 	 	
+ 064F  C3	 	 	RET30:  RET                             ;Need a
+	 	 	 	 nearby RET
+ 	 	 	 	
+ 0650	 	 	 	COPY:
+ 0650  33 C0	 	 	        XOR     AX,AX
+ 0652  A2 0107 R	 	        MOV     [PLUS],AL               ;Will k
+	 	 	 	eep track of "+"s
+ 0655  A3 0098 R	 	        MOV     [FILECNT],AX
+ 0658  BE 0081	 	 	        MOV     SI,81H                  ;Point 
+	 	 	 	to input line
+ 065B  E8 0260 R	 	        CALL    SWITCH                  ;Skip o
+	 	 	 	ver switches on command
+ 065E  8B E8	 	 	        MOV     BP,AX
+ 0660  BF 005C	 	 	        MOV     DI,FCB
+ 0663  E8 07FA R	 	        CALL    PARSNAM                 ;Scan f
+	 	 	 	irst source
+ 0666  88 16 0087 R	 	        MOV     [PARM1],DL              ;Save a
+	 	 	 	mbiguous flag
+ 066A  89 36 0101 R	 	        MOV     [SRCPT],SI              ;Save p
+	 	 	 	ointer to command line
+ 	 	 	 	;Parse each name to find destination and check 
+	 	 	 	for /V switch
+ 066E	 	 	 	SCANNAM:
+ 066E  E8 07EA R	 	        CALL    PARSE
+ 0671  75 FB	 	 	        JNZ     SCANNAM
+ 0673	 	 	 	GETDEST:
+ 0673  BF 00A6 R	 	        MOV     DI,OFFSET TRANGROUP:DEST
+ 0676  8B DD	 	 	        MOV     BX,BP                   ;Remebe
+	 	 	 	r switches so far
+ 0678  33 ED	 	 	        XOR     BP,BP                   ;Must h
+	 	 	 	ave dest. swtiches alone
+ 067A  E8 07FA R	 	        CALL    PARSNAM
+ 067D  89 2E 008D R	 	        MOV     [ARG2S],BP              ;Rememb
+	 	 	 	er switches on destination
+ 0681  75 08	 	 	        JNZ     HAVDESTNAM              ;File n
+	 	 	 	ame present?
+ 0683  47	 	 	        INC     DI                      ;Point 
+	 	 	 	to file name spot
+ 0684  B0 3F	 	 	        MOV     AL,"?"                  ;Substi
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-35
+
+
+
+	 	 	 	tute *.*
+ 0686  B9 000B	 	 	        MOV     CX,11
+ 0689  F3/ AA	 	 	        REP     STOSB
+ 068B	 	 	 	HAVDESTNAM:
+ 068B  0B DD	 	 	        OR      BX,BP                   ;BX = a
+	 	 	 	ll switches combined
+ 068D  80 E3 04	 	 	        AND     BL,VSWITCH              ;Verify
+	 	 	 	 requested?
+ 0690  74 07	 	 	        JZ      NOVER
+ 0692  B8 2E01	 	 	        MOV     AX,46*100H+1            ;Set ve
+	 	 	 	rify
+ 0695  B2 00	 	 	        MOV     DL,0
+ 0697  CD 21	 	 	        INT     33
+ 0699	 	 	 	NOVER:
+ 0699  BF 00CB R	 	        MOV     DI,OFFSET TRANGROUP:DESTNAME
+ 069C  BE 00A7 R	 	        MOV     SI,OFFSET TRANGROUP:DEST+1
+ 069F  BB 005D	 	 	        MOV     BX,FCB+1
+ 06A2  E8 0854 R	 	        CALL    BUILDNAME               ;See if
+	 	 	 	 we can make it unambiguous
+ 06A5  BF 00CB R	 	        MOV     DI,OFFSET TRANGROUP:DESTNAME
+ 06A8  B0 3F	 	 	        MOV     AL,"?"
+ 06AA  B9 000B	 	 	        MOV     CX,11
+ 06AD  F2/ AE	 	 	        REPNE   SCASB                   ;Scan f
+	 	 	 	or "?" to see if ambiguous
+ 06AF  B0 01	 	 	        MOV     AL,1                    ;Flag i
+	 	 	 	f ambig.
+ 06B1  74 01	 	 	        JZ      AMBIG
+ 06B3  48	 	 	        DEC     AX                      ;AL=0 i
+	 	 	 	f unambig.
+ 06B4	 	 	 	AMBIG:
+ 06B4  8A D0	 	 	        MOV     DL,AL
+ 06B6  8A 26 0107 R	 	        MOV     AH,[PLUS]               ;1=foun
+	 	 	 	d "+"
+ 06BA  34 01	 	 	        XOR     AL,1                    ;0=ambi
+	 	 	 	g, 1=unambig destination
+ 06BC  22 06 0087 R	 	        AND     AL,[PARM1]              ;Source
+	 	 	 	 ambig. AND dest unambig.
+ 06C0  0A C4	 	 	        OR      AL,AH                   ;OR fou
+	 	 	 	nd "+" means concatenation
+ 06C2  A2 0106 R	 	        MOV     [ASCII],AL              ;Concat
+	 	 	 	enation implies ASCII mode
+ 06C5  A2 0103 R	 	        MOV     [INEXACT],AL            ;ASCII 
+	 	 	 	implies inexact copy
+ 06C8  D0 E0	 	 	        SHL     AL,1
+ 06CA  0A C2	 	 	        OR      AL,DL                   ;Combin
+	 	 	 	e multiple and concat flags
+ 06CC  A2 0088 R	 	        MOV     [PARM2],AL
+ 06CF  A0 0089 R	 	        MOV     AL,BYTE PTR[COMSW]
+ 06D2  E8 0841 R	 	        CALL    SETASC                  ;Check 
+	 	 	 	/A,/B on command
+ 06D5  A0 008B R	 	        MOV     AL,BYTE PTR[ARG1S]
+ 06D8  E8 0841 R	 	        CALL    SETASC                  ;Check 
+	 	 	 	for ASCII on first filename
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-36
+
+
+
+ 06DB  A2 0089 R	 	        MOV     BYTE PTR[COMSW],AL             
+	 	 	 	 ;Save starting switch values
+ 06DE  B4 11	 	 	        MOV     AH,SRCHFRST
+ 06E0  E8 0830 R	 	        CALL    SEARCH                  ;Search
+	 	 	 	 for first source name
+ 06E3	 	 	 	MULTDEST:
+ 06E3  74 4A	 	 	        JZ      FIRSTSRC                ;Find a
+	 	 	 	 first source name?
+ 06E5  F6 06 0088 R 01	 	        TEST    [PARM2],1               ;If mul
+	 	 	 	tiple, we're done
+ 06EA  75 30	 	 	        JNZ     ENDCOPY
+ 06EC  33 C0	 	 	        XOR     AX,AX
+ 06EE  A3 0094 R	 	        MOV     [NXTADD],AX
+ 06F1  A2 0090 R	 	        MOV     [CFLAG],AL              ;Flag n
+	 	 	 	othing read yet
+ 06F4	 	 	 	NEXTSNG:
+ 06F4  BF 005C	 	 	        MOV     DI,FCB
+ 06F7  8B 36 0101 R	 	        MOV     SI,[SRCPT]
+ 06FB  E8 07ED R	 	        CALL    PARSESRC                ;Parse 
+	 	 	 	next file name into FCB
+ 06FE  88 16 0087 R	 	        MOV     [PARM1],DL              ;Rememb
+	 	 	 	er if it's ambiguous
+ 0702  89 36 0101 R	 	        MOV     [SRCPT],SI
+ 0706  74 11	 	 	        JZ      SNGCLOS
+ 0708  B4 11	 	 	        MOV     AH,SRCHFRST
+ 070A  E8 0830 R	 	        CALL    SEARCH                  ;Search
+	 	 	 	 for new file name
+ 070D  75 E5	 	 	        JNZ     NEXTSNG                 ;If non
+	 	 	 	e, skip it and move to next name
+ 070F	 	 	 	READSNG:
+ 070F  E8 086F R	 	        CALL    CHECKREAD
+ 0712	 	 	 	SNGLOOP:
+ 0712  E8 0827 R	 	        CALL    SEARCHNEXT              ;See if
+	 	 	 	 any more of this name
+ 0715  74 F8	 	 	        JZ      READSNG
+ 0717  EB DB	 	 	        JMP     SHORT NEXTSNG
+ 	 	 	 	
+ 0719	 	 	 	SNGCLOS:
+ 0719  E8 08E8 R	 	        CALL    CLOSEFIL
+ 071C	 	 	 	ENDCOPY:
+ 071C  8B 36 0098 R	 	        MOV     SI,[FILECNT]
+ 0720  33 FF	 	 	        XOR     DI,DI
+ 0722  E8 0553 R	 	        CALL    DISP32BITS
+ 0725  BA 00E3 R	 	        MOV     DX,OFFSET TRANGROUP:COPIED
+ 0728  B4 09	 	 	        MOV     AH,PRINTBUF
+ 072A  CD 21	 	 	        INT     21H
+ 072C  E9 0104 R	 	        JMP     COMMAND                 ;Stack 
+	 	 	 	could be messed up
+ 	 	 	 	
+ 072F	 	 	 	FIRSTSRC:
+ 072F  BE 00D7 R	 	        MOV     SI,OFFSET TRANGROUP:DIRBUF+1
+ 0732  BF 0108 R	 	        MOV     DI,OFFSET TRANGROUP:SOURCE
+ 0735  B9 000B	 	 	        MOV     CX,11
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-37
+
+
+
+ 0738  F3/ A4	 	 	        REP     MOVSB                   ;Copy f
+	 	 	 	irst source name to SOURCE
+ 073A  BE 00CB R	 	        MOV     SI,OFFSET TRANGROUP:DESTNAME
+ 073D  BF 00A7 R	 	        MOV     DI,OFFSET TRANGROUP:DEST+1
+ 0740  BB 0108 R	 	        MOV     BX,OFFSET TRANGROUP:SOURCE
+ 0743  E8 0854 R	 	        CALL    BUILDNAME               ;Build 
+	 	 	 	destination name
+ 0746  33 C0	 	 	        XOR     AX,AX
+ 0748  A3 0094 R	 	        MOV     [NXTADD],AX
+ 074B  A2 0090 R	 	        MOV     [CFLAG],AL
+ 074E  A2 0104 R	 	        MOV     [APPEND],AL
+ 0751  A2 0105 R	 	        MOV     [NOWRITE],AL
+ 0754  F6 06 0088 R 01	 	        TEST    [PARM2],1               ;Multip
+	 	 	 	le destinations?
+ 0759  74 09	 	 	        JZ      NOPRT
+ 075B  BE 00D7 R	 	        MOV     SI,OFFSET TRANGROUP:DIRBUF+1
+ 075E  E8 0526 R	 	        CALL    SHONAME                 ;If so,
+	 	 	 	 show first source
+ 0761  E8 0541 R	 	        CALL    CRLF2
+ 0764	 	 	 	NOPRT:
+ 0764  E8 0863 R	 	        CALL    COMPNAME                ;Source
+	 	 	 	 and dest. the same?
+ 0767  75 4D	 	 	        JNZ     DOREAD                  ;If not
+	 	 	 	, read source in
+ 0769  F6 06 0088 R 02	 	        TEST    [PARM2],2               ;Concat
+	 	 	 	enation?
+ 076E  BA 0095 R	 	        MOV     DX,OFFSET TRANGROUP:OVERWR
+ 0771  74 2B	 	 	        JZ      COPERRJ                 ;If not
+	 	 	 	, overwrite error
+ 0773  C6 06 0104 R 01	 	        MOV     [APPEND],1              ;Set ph
+	 	 	 	ysical append
+ 0778  B4 0F	 	 	        MOV     AH,OPEN
+ 077A  BA 00A6 R	 	        MOV     DX,OFFSET TRANGROUP:DEST
+ 077D  CD 21	 	 	        INT     33                      ;Open (
+	 	 	 	existing) destination
+ 077F  80 3E 0106 R 00	 	        CMP     [ASCII],0               ;ASCII 
+	 	 	 	flag set?
+ 0784  74 1B	 	 	        JZ      BINARYAPP
+ 	 	 	 	;ASCII append. Must find logical EOF, then seek
+	 	 	 	 there with dest. FCB
+ 0786  C6 06 0105 R 01	 	        MOV     [NOWRITE],1
+ 078B  E8 0883 R	 	        CALL    READIN                  ;Find E
+	 	 	 	OF
+ 078E  E8 0934 R	 	        CALL    FLSHFIL                 ;Seek t
+	 	 	 	here
+ 0791  C6 06 0105 R 00	 	        MOV     [NOWRITE],0
+ 0796  E8 0934 R	 	        CALL    FLSHFIL                 ;Trunca
+	 	 	 	te file
+ 0799  EB 1E	 	 	        JMP     SHORT SNGLCHK
+ 	 	 	 	
+ 079B  E9 0712 R	 	SNGLOOPJ:JMP    SNGLOOP
+ 	 	 	 	
+ 079E  E9 0991 R	 	COPERRJ:JMP     COPERR
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-38
+
+
+
+ 	 	 	 	
+ 07A1	 	 	 	BINARYAPP:
+ 07A1  C7 06 00B4 R 0001	        MOV     WORD PTR[DEST+RECLEN],1        
+	 	 	 	 ;Set record length to 1
+ 07A7  BE 00B6 R	 	        MOV     SI,OFFSET TRANGROUP:DEST+16    
+	 	 	 	         ;Point to file size
+ 07AA  BF 00C7 R	 	        MOV     DI,OFFSET TRANGROUP:DEST+RR
+ 07AD  A5	 	 	        MOVSW
+ 07AE  A5	 	 	        MOVSW                           ;Seek t
+	 	 	 	o end of file
+ 07AF  C6 06 0090 R 01	 	        MOV     [CFLAG],1
+ 07B4  EB 03	 	 	        JMP     SHORT SNGLCHK
+ 07B6	 	 	 	DOREAD:
+ 07B6  E8 0883 R	 	        CALL    READIN
+ 07B9	 	 	 	SNGLCHK:
+ 07B9  F6 06 0088 R 01	 	        TEST    [PARM2],1               ;Single
+	 	 	 	 or multiple destinations?
+ 07BE  74 DB	 	 	        JZ      SNGLOOPJ
+ 07C0  8B 36 0101 R	 	        MOV     SI,[SRCPT]
+ 07C4	 	 	 	MULTAPP:
+ 07C4  E8 07EA R	 	        CALL    PARSE
+ 07C7  74 12	 	 	        JZ      MULTCLOS
+ 07C9  56	 	 	        PUSH    SI
+ 07CA  BE 00D7 R	 	        MOV     SI,OFFSET TRANGROUP:DIRBUF+1
+ 07CD  8B FE	 	 	        MOV     DI,SI
+ 07CF  BB 0108 R	 	        MOV     BX,OFFSET TRANGROUP:SOURCE
+ 07D2  E8 0854 R	 	        CALL    BUILDNAME
+ 07D5  E8 086F R	 	        CALL    CHECKREAD
+ 07D8  5E	 	 	        POP     SI
+ 07D9  EB E9	 	 	        JMP     SHORT MULTAPP
+ 07DB	 	 	 	MULTCLOS:
+ 07DB  E8 08E8 R	 	        CALL    CLOSEFIL
+ 07DE  A0 0089 R	 	        MOV     AL,BYTE PTR[COMSW]
+ 07E1  A2 0106 R	 	        MOV     [ASCII],AL              ;Restor
+	 	 	 	e ASCII flag
+ 07E4  E8 0827 R	 	        CALL    SEARCHNEXT
+ 07E7  E9 06E3 R	 	        JMP     MULTDEST
+ 	 	 	 	
+ 07EA	 	 	 	PARSE:
+ 07EA  BF 00D6 R	 	        MOV     DI,OFFSET TRANGROUP:DIRBUF
+ 07ED	 	 	 	PARSESRC:
+ 07ED  E8 09BD R	 	        CALL    SCANOFF
+ 07F0  3C 2B	 	 	        CMP     AL,"+"
+ 07F2  75 30	 	 	        JNZ     RETZF
+ 07F4  C6 06 0107 R 01	 	        MOV     [PLUS],1                ;Keep t
+	 	 	 	rack of "+" signs
+ 07F9  46	 	 	        INC     SI                      ;Skip o
+	 	 	 	ver it
+ 07FA	 	 	 	PARSNAM:
+ 07FA  B8 2901	 	 	        MOV     AX,2901H
+ 07FD  CD 21	 	 	        INT     33                      ;Parse 
+	 	 	 	file name
+ 07FF  3C FF	 	 	        CMP     AL,-1                   ;Illega
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-39
+
+
+
+	 	 	 	l?
+ 0801  BA 011D R	 	        MOV     DX,OFFSET TRANGROUP:BADDRV
+ 0804  74 98	 	 	        JZ      COPERRJ
+ 0806  92	 	 	        XCHG    AX,DX                   ;Save p
+	 	 	 	arse flag in DL
+ 0807  8A 05	 	 	        MOV     AL,BYTE PTR[DI]         ;Get dr
+	 	 	 	ive number
+ 0809  0A C0	 	 	        OR      AL,AL                   ;Is it 
+	 	 	 	default?
+ 080B  75 06	 	 	        JNZ     PARSW
+ 080D  A0 0086 R	 	        MOV     AL,[CURDRV]             ;Substi
+	 	 	 	tute actual drive
+ 0810  40	 	 	        INC     AX
+ 0811  88 05	 	 	        MOV     BYTE PTR[DI],AL
+ 0813	 	 	 	PARSW:
+ 0813  53	 	 	        PUSH    BX
+ 0814  57	 	 	        PUSH    DI
+ 0815  E8 0260 R	 	        CALL    SWITCH                  ;Proces
+	 	 	 	s switches
+ 0818  0B E8	 	 	        OR      BP,AX                   ;Combin
+	 	 	 	e all switches
+ 081A  E8 0841 R	 	        CALL    SETASC                  ;Check 
+	 	 	 	for /A or /B
+ 081D  5F	 	 	        POP     DI
+ 081E  5B	 	 	        POP     BX
+ 081F  80 7D 01 20	 	        CMP     BYTE PTR[DI+1]," "             
+	 	 	 	 ;Did we even get a file name?
+ 0823  C3	 	 	        RET
+ 	 	 	 	
+ 0824	 	 	 	RETZF:
+ 0824  33 C0	 	 	        XOR     AX,AX
+ 0826  C3	 	 	RET35:  RET
+ 	 	 	 	
+ 0827	 	 	 	SEARCHNEXT:
+ 0827  A0 0087 R	 	        MOV     AL,[PARM1]              ;Is nam
+	 	 	 	e ambiguous?
+ 082A  FE C8	 	 	        DEC     AL
+ 082C  75 F8	 	 	        JNZ     RET35                   ;Don't 
+	 	 	 	perform search if not
+ 082E  B4 12	 	 	        MOV     AH,SRCHNXT
+ 0830	 	 	 	SEARCH:
+ 0830  50	 	 	        PUSH    AX
+ 0831  B4 1A	 	 	        MOV     AH,SETDMA
+ 0833  BA 00D6 R	 	        MOV     DX,OFFSET TRANGROUP:DIRBUF
+ 0836  CD 21	 	 	        INT     33                      ;Put re
+	 	 	 	sult of search in DIRBUF
+ 0838  58	 	 	        POP     AX                      ;Restor
+	 	 	 	e search first/next command
+ 0839  BA 005C	 	 	        MOV     DX,FCB
+ 083C  CD 21	 	 	        INT     33                      ;Do the
+	 	 	 	 search
+ 083E  0A C0	 	 	        OR      AL,AL
+ 0840  C3	 	 	        RET
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-40
+
+
+
+ 	 	 	 	
+ 0841	 	 	 	SETASC:
+ 	 	 	 	;Given switch vector in AX, 
+ 	 	 	 	;       Set ASCII switch if /A is set
+ 	 	 	 	;       Clear ASCII switch if /B is set
+ 	 	 	 	;       Leave ASCII unchanged if neither or bot
+	 	 	 	h are set
+ 	 	 	 	; Also sets INEXACT if ASCII is ever set. AL = 
+	 	 	 	ASCII on exit, flags set
+ 0841  24 18	 	 	        AND     AL,ASWITCH+BSWITCH
+ 0843  7A 09	 	 	        JPE     LOADSW                  ;PE mea
+	 	 	 	ns both or neither are set
+ 0845  24 08	 	 	        AND     AL,ASWITCH
+ 0847  A2 0106 R	 	        MOV     [ASCII],AL
+ 084A  08 06 0103 R	 	        OR      [INEXACT],AL
+ 084E	 	 	 	LOADSW:
+ 084E  A0 0106 R	 	        MOV     AL,[ASCII]
+ 0851  0A C0	 	 	        OR      AL,AL
+ 0853  C3	 	 	        RET
+ 	 	 	 	
+ 0854	 	 	 	BUILDNAME:
+ 	 	 	 	; [SI] = Ambiguous input file name
+ 	 	 	 	; [BX] = Source of replacement characters
+ 	 	 	 	; [DI] = Destination
+ 	 	 	 	; File name is copied from [SI] to [DI]. If "?"
+	 	 	 	s are encountered,
+ 	 	 	 	; they are replaced with the character in the s
+	 	 	 	ame position at [BX].
+ 0854  B9 000B	 	 	        MOV     CX,11
+ 0857	 	 	 	BUILDNAM:
+ 0857  AC	 	 	        LODSB
+ 0858  3C 3F	 	 	        CMP     AL,"?"
+ 085A  75 02	 	 	        JNZ     NOTAMBIG
+ 085C  8A 07	 	 	        MOV     AL,BYTE PTR[BX]
+ 085E	 	 	 	NOTAMBIG:
+ 085E  AA	 	 	        STOSB
+ 085F  43	 	 	        INC     BX
+ 0860  E2 F5	 	 	        LOOP    BUILDNAM
+ 0862  C3	 	 	        RET
+ 	 	 	 	
+ 0863	 	 	 	COMPNAME:
+ 0863  BE 00A6 R	 	        MOV     SI,OFFSET TRANGROUP:DEST
+ 0866  BF 00D6 R	 	        MOV     DI,OFFSET TRANGROUP:DIRBUF
+ 0869  B9 0006	 	 	        MOV     CX,6
+ 086C  F3/ A7	 	 	        REPE    CMPSW
+ 086E  C3	 	 	        RET
+ 	 	 	 	
+ 086F	 	 	 	CHECKREAD:
+ 	 	 	 	;Read file in (with READIN) if not identical to
+	 	 	 	 destination
+ 086F  E8 0863 R	 	        CALL    COMPNAME                ;See if
+	 	 	 	 source and destination the same
+ 0872  75 0F	 	 	        JNZ     READIN
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-41
+
+
+
+ 0874  80 3E 0104 R 00	 	        CMP     [APPEND],0              ;If phy
+	 	 	 	sical append, it's OK
+ 0879  75 07	 	 	        JNZ     RET40
+ 087B  BA 00B9 R	 	        MOV     DX,OFFSET TRANGROUP:LOSTERR    
+	 	 	 	         ;Tell him he's not going to get it
+ 087E  B4 09	 	 	        MOV     AH,PRINTBUF
+ 0880  CD 21	 	 	        INT     33
+ 0882  C3	 	 	RET40:  RET
+ 	 	 	 	
+ 0883	 	 	 	READIN:
+ 	 	 	 	;Open source file and read it in. If memory fil
+	 	 	 	ls up, flush it out to
+ 	 	 	 	;destination and keep reading. If /A switch set
+	 	 	 	, chop file at first ^Z.
+ 	 	 	 	; Inputs/Outputs:
+ 	 	 	 	;       [NXTADD] has current pointer in buffer
+ 	 	 	 	;       [CFLAG] <>0 if destination has been cre
+	 	 	 	ated
+ 	 	 	 	
+ 0883  BA 00D6 R	 	        MOV     DX,OFFSET TRANGROUP:DIRBUF
+ 0886  B4 0F	 	 	        MOV     AH,OPEN
+ 0888  CD 21	 	 	        INT     21H
+ 088A  0A C0	 	 	        OR      AL,AL                   ;Succes
+	 	 	 	sful open?
+ 088C  75 F4	 	 	        JNZ     RET40                   ;If not
+	 	 	 	, just ignore it
+ 088E  33 C0	 	 	        XOR     AX,AX
+ 0890  A3 00F7 R	 	        MOV     WORD PTR[DIRBUF+RR],AX
+ 0893  A3 00F9 R	 	        MOV     WORD PTR[DIRBUF+RR+2],AX
+ 0896  40	 	 	        INC     AX
+ 0897  A3 00E4 R	 	        MOV     WORD PTR[DIRBUF+RECLEN],AX
+ 089A	 	 	 	COPYLP:
+ 089A  8B 16 0094 R	 	        MOV     DX,[NXTADD]
+ 089E  B4 1A	 	 	        MOV     AH,SETDMA
+ 08A0  1E	 	 	        PUSH    DS
+ 08A1  8E 1E 0080 R	 	        MOV     DS,[TPA]
+ 08A5  CD 21	 	 	        INT     33
+ 08A7  1F	 	 	        POP     DS
+ 08A8  8B 0E 0092 R	 	        MOV     CX,[BYTCNT]
+ 08AC  2B CA	 	 	        SUB     CX,DX                   ;Comput
+	 	 	 	e available space
+ 08AE  BA 00D6 R	 	        MOV     DX,OFFSET TRANGROUP:DIRBUF
+ 08B1  B4 27	 	 	        MOV     AH,RDBLK                ;Read i
+	 	 	 	n source file
+ 08B3  CD 21	 	 	        INT     21H
+ 08B5  E3 CB	 	 	        JCXZ    RET40
+ 08B7  80 3E 0106 R 00	 	        CMP     [ASCII],0
+ 08BC  74 17	 	 	        JZ      BINREAD
+ 08BE  8B D1	 	 	        MOV     DX,CX
+ 08C0  8B 3E 0094 R	 	        MOV     DI,[NXTADD]
+ 08C4  B0 1A	 	 	        MOV     AL,1AH
+ 08C6  06	 	 	        PUSH    ES
+ 08C7  8E 06 0080 R	 	        MOV     ES,[TPA]
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-42
+
+
+
+ 08CB  F2/ AE	 	 	        REPNE   SCASB                   ;Scan f
+	 	 	 	or EOF
+ 08CD  07	 	 	        POP     ES
+ 08CE  75 01	 	 	        JNZ     USEALL
+ 08D0  41	 	 	        INC     CX
+ 08D1	 	 	 	USEALL:
+ 08D1  2B D1	 	 	        SUB     DX,CX
+ 08D3  8B CA	 	 	        MOV     CX,DX
+ 08D5	 	 	 	BINREAD:
+ 08D5  03 0E 0094 R	 	        ADD     CX,[NXTADD]
+ 08D9  89 0E 0094 R	 	        MOV     [NXTADD],CX
+ 08DD  3B 0E 0092 R	 	        CMP     CX,[BYTCNT]             ;Is buf
+	 	 	 	fer full?
+ 08E1  72 9F	 	 	        JB      RET40                   ;If not
+	 	 	 	, we must have found EOF
+ 08E3  E8 0934 R	 	        CALL    FLSHFIL
+ 08E6  EB B2	 	 	        JMP     SHORT COPYLP
+ 	 	 	 	
+ 08E8	 	 	 	CLOSEFIL:
+ 08E8  A1 0094 R	 	        MOV     AX,[NXTADD]
+ 08EB  8B D8	 	 	        MOV     BX,AX
+ 08ED  0A C4	 	 	        OR      AL,AH                   ;See if
+	 	 	 	 any data is loaded
+ 08EF  0A 06 0090 R	 	        OR      AL,[CFLAG]              ;   or 
+	 	 	 	file was created
+ 08F3  74 3E	 	 	        JZ      RET50                   ;Don't 
+	 	 	 	close or count if not created
+ 08F5  A0 008D R	 	        MOV     AL,BYTE PTR[ARG2S]
+ 08F8  E8 0841 R	 	        CALL    SETASC                  ;Check 
+	 	 	 	for /B or /A on destination
+ 08FB  74 19	 	 	        JZ      BINCLOS
+ 08FD  3B 1E 0092 R	 	        CMP     BX,[BYTCNT]             ;Is mem
+	 	 	 	ory full?
+ 0901  75 05	 	 	        JNZ     PUTZ
+ 0903  E8 0934 R	 	        CALL    FLSHFIL                 ;Empty 
+	 	 	 	it to make room for 1 lousy byte
+ 0906  33 DB	 	 	        XOR     BX,BX
+ 0908	 	 	 	PUTZ:
+ 0908  1E	 	 	        PUSH    DS
+ 0909  8E 1E 0080 R	 	        MOV     DS,[TPA]
+ 090D  C7 07 001A	 	        MOV     WORD PTR[BX],1AH               
+	 	 	 	 ;Add End-of-file mark (Ctrl-Z)
+ 0911  1F	 	 	        POP     DS
+ 0912  FF 06 0094 R	 	        INC     [NXTADD]
+ 0916	 	 	 	BINCLOS:
+ 0916  E8 0934 R	 	        CALL    FLSHFIL
+ 0919  80 3E 0103 R 00	 	        CMP     [INEXACT],0             ;Copy n
+	 	 	 	ot exact?
+ 091E  75 08	 	 	        JNZ     NODATE                  ;If so,
+	 	 	 	 don't copy date & time
+ 0920  BE 00EA R	 	        MOV     SI,OFFSET TRANGROUP:DIRBUF+OFFD
+	 	 	 	ATE
+ 0923  BF 00BA R	 	        MOV     DI,OFFSET TRANGROUP:DEST+OFFDAT
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-43
+
+
+
+	 	 	 	E        ;Make date & time same as original
+ 0926  A5	 	 	        MOVSW                           ;Copy d
+	 	 	 	ate
+ 0927  A5	 	 	        MOVSW                           ;Copy t
+	 	 	 	ime
+ 0928	 	 	 	NODATE:
+ 0928  BA 00A6 R	 	        MOV     DX,OFFSET TRANGROUP:DEST
+ 092B  B4 10	 	 	        MOV     AH,CLOSE
+ 092D  CD 21	 	 	        INT     21H
+ 092F  FF 06 0098 R	 	        INC     [FILECNT]
+ 0933  C3	 	 	RET50:  RET
+ 	 	 	 	
+ 0934	 	 	 	FLSHFIL:
+ 	 	 	 	;Write out any data remaining in memory.
+ 	 	 	 	; Inputs:
+ 	 	 	 	;       [NXTADD] = No. of bytes to write
+ 	 	 	 	;       [CFLAG] <>0 if file has been created
+ 	 	 	 	; Outputs:
+ 	 	 	 	;       [NXTADD] = 0
+ 	 	 	 	
+ 0934  B0 01	 	 	        MOV     AL,1
+ 0936  86 06 0090 R	 	        XCHG    [CFLAG],AL
+ 093A  0A C0	 	 	        OR      AL,AL
+ 093C  75 21	 	 	        JNZ     EXISTS
+ 093E  80 3E 0105 R 00	 	        CMP     [NOWRITE],0
+ 0943  75 0E	 	 	        JNZ     SKPMAK                  ;Don't 
+	 	 	 	actually create if NOWRITE set
+ 0945  BA 00A6 R	 	        MOV     DX,OFFSET TRANGROUP:DEST
+ 0948  B4 16	 	 	        MOV     AH,MAKE
+ 094A  CD 21	 	 	        INT     21H
+ 094C  BA 007F R	 	        MOV     DX,OFFSET TRANGROUP:FULDIR
+ 094F  0A C0	 	 	        OR      AL,AL
+ 0951  75 3E	 	 	        JNZ     COPERR
+ 0953	 	 	 	SKPMAK:
+ 0953  33 C0	 	 	        XOR     AX,AX
+ 0955  A3 00C7 R	 	        MOV     WORD PTR[DEST+RR],AX
+ 0958  A3 00C9 R	 	        MOV     WORD PTR[DEST+RR+2],AX
+ 095B  40	 	 	        INC     AX
+ 095C  A3 00B4 R	 	        MOV     WORD PTR[DEST+RECLEN],AX
+ 095F	 	 	 	EXISTS:
+ 095F  33 C9	 	 	        XOR     CX,CX
+ 0961  87 0E 0094 R	 	        XCHG    CX,[NXTADD]
+ 0965  80 3E 0105 R 00	 	        CMP     [NOWRITE],0             ;If NOW
+	 	 	 	RITE set, just seek CX bytes
+ 096A  75 2C	 	 	        JNZ     SEEKEND
+ 096C  33 D2	 	 	        XOR     DX,DX
+ 096E  1E	 	 	        PUSH    DS
+ 096F  8E 1E 0080 R	 	        MOV     DS,[TPA]
+ 0973  B4 1A	 	 	        MOV     AH,SETDMA
+ 0975  CD 21	 	 	        INT     33
+ 0977  1F	 	 	        POP     DS
+ 0978  BA 00A6 R	 	        MOV     DX,OFFSET TRANGROUP:DEST
+ 097B  B4 28	 	 	        MOV     AH,WRBLK
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-44
+
+
+
+ 097D  CD 21	 	 	        INT     21H
+ 097F  0A C0	 	 	        OR      AL,AL
+ 0981  74 1E	 	 	        JZ      RET60
+ 0983  BA 00A6 R	 	        MOV     DX,OFFSET TRANGROUP:DEST
+ 0986  B4 10	 	 	        MOV     AH,CLOSE
+ 0988  CD 21	 	 	        INT     21H
+ 098A  B4 13	 	 	        MOV     AH,DELETE
+ 098C  CD 21	 	 	        INT     33
+ 098E  BA 0065 R	 	        MOV     DX,OFFSET TRANGROUP:NOSPACE
+ 0991	 	 	 	COPERR:
+ 0991  B4 09	 	 	        MOV     AH,9
+ 0993  CD 21	 	 	        INT     21H
+ 0995  E9 071C R	 	        JMP     ENDCOPY
+ 	 	 	 	
+ 0998	 	 	 	SEEKEND:
+ 0998  01 0E 00C7 R	 	        ADD     WORD PTR[DEST+RR],CX
+ 099C  83 16 00C9 R 00	 	        ADC     WORD PTR[DEST+RR+2],0          
+	 	 	 	 ;Propagate carry
+ 09A1  C3	 	 	RET60:  RET
+ 	 	 	 	
+ 09A2	 	 	 	GETBATBYT:
+ 	 	 	 	;Get one byte from the batch file and return it
+	 	 	 	 in AL. End-of-file
+ 	 	 	 	;returns <CR> and ends batch mode. DS must be s
+	 	 	 	et to resident segment.
+ 	 	 	 	;AH, CX, DX destroyed.
+ 	 	 	 	ASSUME  DS:RESGROUP
+ 09A2  BA 013F R	 	        MOV     DX,OFFSET RESGROUP:BATFCB
+ 09A5  B4 27	 	 	        MOV     AH,RDBLK
+ 09A7  B9 0001	 	 	        MOV     CX,1
+ 09AA  CD 21	 	 	        INT     33              ;Get one more b
+	 	 	 	yte from batch file
+ 09AC  E3 07	 	 	        JCXZ    BATEOF
+ 09AE  A0 01A2 R	 	        MOV     AL,[BATBYT]
+ 09B1  3C 1A	 	 	        CMP     AL,1AH
+ 09B3  75 07	 	 	        JNZ     RET70
+ 09B5	 	 	 	BATEOF:
+ 09B5  B0 0D	 	 	        MOV     AL,0DH          ;If end-of-file
+	 	 	 	, then end of line
+ 09B7  C6 06 0178 R 00	 	        MOV     [BATCH],0       ;And turn off b
+	 	 	 	atch mode
+ 09BC  C3	 	 	RET70:  RET
+ 	 	 	 	ASSUME  DS:TRANGROUP
+ 	 	 	 	
+ 09BD	 	 	 	SCANOFF:
+ 09BD  AC	 	 	        LODSB
+ 09BE  E8 09C5 R	 	        CALL    DELIM
+ 09C1  74 FA	 	 	        JZ      SCANOFF
+ 09C3  4E	 	 	        DEC     SI              ;Point to first
+	 	 	 	 non-delimiter
+ 09C4  C3	 	 	        RET
+ 	 	 	 	
+ 09C5	 	 	 	DELIM:
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-45
+
+
+
+ 09C5  3C 20	 	 	        CMP     AL," "
+ 09C7  74 0A	 	 	        JZ      RET80
+ 09C9  3C 3D	 	 	        CMP     AL,"="
+ 09CB  74 06	 	 	        JZ      RET80
+ 09CD  3C 2C	 	 	        CMP     AL,","
+ 09CF  74 02	 	 	        JZ      RET80
+ 09D1  3C 09	 	 	        CMP     AL,9            ;Check for TAB 
+	 	 	 	character
+ 09D3  C3	 	 	RET80:  RET
+ 	 	 	 	
+ 09D4	 	 	 	PAUSE:
+ 09D4  BA 0139 R	 	        MOV     DX,OFFSET TRANGROUP:PAUSMES
+ 09D7  B4 09	 	 	        MOV     AH,PRINTBUF
+ 09D9  CD 21	 	 	        INT     33
+ 09DB  B8 0C01	 	 	        MOV     AX,0C00H+INCHAR ;Get character 
+	 	 	 	with KB buffer flush
+ 09DE  CD 21	 	 	        INT     33
+ 09E0  C3	 	 	RET90:  RET
+ 	 	 	 	
+ 	 	 	 	;Date and time are set during initialization an
+	 	 	 	d use
+ 	 	 	 	;this routines since they need to do a long ret
+	 	 	 	urn
+ 	 	 	 	
+ 09E1	 	 	 	DATINIT:
+ 09E1  06	 	 	        PUSH    ES
+ 09E2  1E	 	 	        PUSH    DS              ;Going to use t
+	 	 	 	he previous stack
+ 09E3  8C C8	 	 	        MOV     AX,CS           ;Set up the app
+	 	 	 	ropriate segment registers
+ 09E5  8E C0	 	 	        MOV     ES,AX
+ 09E7  8E D8	 	 	        MOV     DS,AX
+ 09E9  C7 06 0081 000D	 	        MOV     WORD PTR DS:[81H],13    ;Want t
+	 	 	 	o prompt for date during initialization
+ 09EF  E8 09F8 R	 	        CALL    DATE
+ 09F2  E8 0A8B R	 	        CALL    TIME
+ 09F5  1F	 	 	        POP     DS
+ 09F6  07	 	 	        POP     ES
+ 09F7	 	 	 	YYY     PROC    FAR
+ 09F7  CB	 	 	        RET
+ 09F8	 	 	 	YYY     ENDP
+ 	 	 	 	
+ 	 	 	 	; DATE - Gets and sets the time
+ 	 	 	 	
+ 09F8	 	 	 	DATE:
+ 09F8  BE 0081	 	 	        MOV     SI,81H          ;Accepting argu
+	 	 	 	ment for date inline
+ 09FB  E8 09BD R	 	        CALL    SCANOFF
+ 09FE  3C 0D	 	 	        CMP     AL,13
+ 0A00  74 09	 	 	        JZ      PRMTDAT
+ 0A02  BB 2F2D	 	 	        MOV     BX,2F00H+"-"    ;"/-"
+ 0A05  E8 0B0F R	 	        CALL    INLINE
+ 0A08  EB 3D 90	 	 	        JMP     COMDAT
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-46
+
+
+
+ 	 	 	 	
+ 0A0B	 	 	 	PRMTDAT:
+ 0A0B  BA 018D R	 	        MOV     DX,OFFSET TRANGROUP:CURDAT
+ 0A0E  B4 09	 	 	        MOV     AH,PRINTBUF
+ 0A10  CD 21	 	 	        INT     33              ;Print "Current
+	 	 	 	 date is "
+ 0A12  B4 2A	 	 	        MOV     AH,GETDATE
+ 0A14  CD 21	 	 	        INT     33              ;Get date in CX
+	 	 	 	:DX
+ 0A16  98	 	 	        CBW
+ 0A17  8B F0	 	 	        MOV     SI,AX
+ 0A19  D1 E6	 	 	        SHL     SI,1
+ 0A1B  03 F0	 	 	        ADD     SI,AX           ;SI=AX*3
+ 0A1D  81 C6 0169 R	 	        ADD     SI,OFFSET TRANGROUP:WEEKTAB
+ 0A21  8B D9	 	 	        MOV     BX,CX
+ 0A23  B9 0003	 	 	        MOV     CX,3
+ 0A26  E8 0532 R	 	        CALL    OUTCNT
+ 0A29  B0 20	 	 	        MOV     AL," "
+ 0A2B  E8 0B8A R	 	        CALL    OUT
+ 0A2E  8B C3	 	 	        MOV     AX,BX
+ 0A30  8B CA	 	 	        MOV     CX,DX
+ 0A32  B2 64	 	 	        MOV     DL,100
+ 0A34  F6 F2	 	 	        DIV     DL
+ 0A36  86 C4	 	 	        XCHG    AL,AH
+ 0A38  92	 	 	        XCHG    AX,DX
+ 0A39  B3 2D	 	 	        MOV     BL,"-"
+ 0A3B  E8 0B4F R	 	        CALL    SHOW
+ 0A3E	 	 	 	GETDAT:
+ 0A3E  BA 019E R	 	        MOV     DX,OFFSET TRANGROUP:NEWDAT
+ 0A41  BB 2F2D	 	 	        MOV     BX,2F00H+"-"    ;"/-" in BX
+ 0A44  E8 0AF9 R	 	        CALL    GETBUF
+ 0A47  74 97	 	 	COMDAT: JZ      RET90
+ 0A49  72 37	 	 	        JC      DATERR
+ 0A4B  AC	 	 	        LODSB   
+ 0A4C  3A C3	 	 	        CMP     AL,BL
+ 0A4E  74 04	 	 	        JZ      SEPGD
+ 0A50  3A C7	 	 	        CMP     AL,BH
+ 0A52  75 2E	 	 	        JNZ     DATERR
+ 0A54  E8 0B2F R	 	SEPGD:  CALL    GETNUM
+ 0A57  72 29	 	 	        JC      DATERR
+ 0A59  B9 076C	 	 	        MOV     CX,1900
+ 0A5C  80 3C 0D	 	 	        CMP     BYTE PTR[SI],13
+ 0A5F  74 0B	 	 	        JZ      BIAS
+ 0A61  B0 64	 	 	        MOV     AL,100
+ 0A63  F6 E4	 	 	        MUL     AH
+ 0A65  8B C8	 	 	        MOV     CX,AX
+ 0A67  E8 0B2F R	 	        CALL    GETNUM
+ 0A6A  72 16	 	 	        JC      DATERR
+ 0A6C	 	 	 	BIAS:
+ 0A6C  8A C4	 	 	        MOV     AL,AH
+ 0A6E  B4 00	 	 	        MOV     AH,0
+ 0A70  03 C8	 	 	        ADD     CX,AX
+ 0A72  AC	 	 	        LODSB
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-47
+
+
+
+ 0A73  3C 0D	 	 	        CMP     AL,13
+ 0A75  75 0B	 	 	        JNZ     DATERR
+ 0A77  B4 2B	 	 	        MOV     AH,SETDATE
+ 0A79  CD 21	 	 	        INT     33
+ 0A7B  0A C0	 	 	        OR      AL,AL
+ 0A7D  75 03	 	 	        JNZ     DATERR
+ 0A7F  E9 09E0 R	 	        JMP     RET90
+ 0A82	 	 	 	DATERR:
+ 0A82  BA 017E R	 	        MOV     DX,OFFSET TRANGROUP:BADDAT
+ 0A85  B4 09	 	 	        MOV     AH,PRINTBUF
+ 0A87  CD 21	 	 	        INT     33
+ 0A89  EB B3	 	 	        JMP     GETDAT
+ 	 	 	 	
+ 	 	 	 	; TIME gets and sets the time
+ 	 	 	 	
+ 0A8B	 	 	 	TIME:
+ 0A8B  BE 0081	 	 	        MOV     SI,81H                  ;Accept
+	 	 	 	ing argument for time inline
+ 0A8E  E8 09BD R	 	        CALL    SCANOFF
+ 0A91  3C 0D	 	 	        CMP     AL,13
+ 0A93  74 09	 	 	        JZ      PRMTTIM
+ 0A95  BB 3A3A	 	 	        MOV     BX,3A00H+":"
+ 0A98  E8 0B0F R	 	        CALL    INLINE
+ 0A9B  EB 1C 90	 	 	        JMP     COMTIM
+ 	 	 	 	
+ 0A9E	 	 	 	PRMTTIM:
+ 0A9E  BA 01C0 R	 	        MOV     DX,OFFSET TRANGROUP:CURTIM
+ 0AA1  B4 09	 	 	        MOV     AH,PRINTBUF
+ 0AA3  CD 21	 	 	        INT     33              ;Print "Current
+	 	 	 	 time is "
+ 0AA5  B4 2C	 	 	        MOV     AH,GETTIME
+ 0AA7  CD 21	 	 	        INT     33              ;Get time in CX
+	 	 	 	:DX
+ 0AA9  B3 3A	 	 	        MOV     BL,":"
+ 0AAB  E8 0B4F R	 	        CALL    SHOW
+ 0AAE	 	 	 	GETTIM:
+ 0AAE  33 C9	 	 	        XOR     CX,CX           ;Initialize hou
+	 	 	 	rs and minutes to zero
+ 0AB0  BA 01D1 R	 	        MOV     DX,OFFSET TRANGROUP:NEWTIM
+ 0AB3  BB 3A3A	 	 	        MOV     BX,3A00H+":"
+ 0AB6  E8 0AF9 R	 	        CALL    GETBUF
+ 0AB9  74 68	 	 	COMTIM: JZ      RET100          ;If no time pre
+	 	 	 	sent, don't change it
+ 0ABB  72 33	 	 	        JC      TIMERR
+ 0ABD  8B CA	 	 	        MOV     CX,DX
+ 0ABF  33 D2	 	 	        XOR     DX,DX
+ 0AC1  AC	 	 	        LODSB
+ 0AC2  3C 0D	 	 	        CMP     AL,13
+ 0AC4  74 22	 	 	        JZ      SAVTIM
+ 0AC6  3A C3	 	 	        CMP     AL,BL
+ 0AC8  75 26	 	 	        JNZ     TIMERR
+ 0ACA  B3 2E	 	 	        MOV     BL,"."
+ 0ACC  E8 0B2F R	 	        CALL    GETNUM
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-48
+
+
+
+ 0ACF  72 1F	 	 	        JC      TIMERR
+ 0AD1  8A F4	 	 	        MOV     DH,AH           ;Position secon
+	 	 	 	ds
+ 0AD3  AC	 	 	        LODSB
+ 0AD4  3C 0D	 	 	        CMP     AL,13
+ 0AD6  74 10	 	 	        JZ      SAVTIM
+ 0AD8  3A C3	 	 	        CMP     AL,BL
+ 0ADA  75 14	 	 	        JNZ     TIMERR  
+ 0ADC  E8 0B2F R	 	        CALL    GETNUM
+ 0ADF  72 0F	 	 	        JC      TIMERR
+ 0AE1  8A D4	 	 	        MOV     DL,AH
+ 0AE3  AC	 	 	        LODSB
+ 0AE4  3C 0D	 	 	        CMP     AL,13
+ 0AE6  75 08	 	 	        JNZ     TIMERR
+ 0AE8	 	 	 	SAVTIM:
+ 0AE8  B4 2D	 	 	        MOV     AH,SETTIME
+ 0AEA  CD 21	 	 	        INT     33
+ 0AEC  0A C0	 	 	        OR      AL,AL
+ 0AEE  74 33	 	 	        JZ      RET100          ;Error in time?
+ 0AF0	 	 	 	TIMERR:
+ 0AF0  BA 01B1 R	 	        MOV     DX,OFFSET TRANGROUP:BADTIM
+ 0AF3  B4 09	 	 	        MOV     AH,PRINTBUF
+ 0AF5  CD 21	 	 	        INT     33              ;Print error me
+	 	 	 	ssage
+ 0AF7  EB B5	 	 	        JMP     GETTIM          ;Try again
+ 	 	 	 	
+ 0AF9	 	 	 	GETBUF:
+ 0AF9  B4 09	 	 	        MOV     AH,PRINTBUF
+ 0AFB  CD 21	 	 	        INT     33              ;Print "Enter n
+	 	 	 	ew date: "
+ 0AFD  B4 0A	 	 	        MOV     AH,INBUF
+ 0AFF  BA 0252 R	 	        MOV     DX,OFFSET TRANGROUP:COMBUF
+ 0B02  CD 21	 	 	        INT     33              ;Get input line
+ 0B04  E8 0541 R	 	        CALL    CRLF2
+ 0B07  BE 0254 R	 	        MOV     SI,OFFSET TRANGROUP:COMBUF+2
+ 0B0A  80 3C 0D	 	 	        CMP     BYTE PTR[SI],13 ;Check if new d
+	 	 	 	ate entered
+ 0B0D  74 14	 	 	        JZ      RET100
+ 0B0F	 	 	 	INLINE:
+ 0B0F  E8 0B2F R	 	        CALL    GETNUM          ;Get one or two
+	 	 	 	 digit number
+ 0B12  72 0F	 	 	        JC      RET100
+ 0B14  8A F4	 	 	        MOV     DH,AH           ;Put in positio
+	 	 	 	n
+ 0B16  AC	 	 	        LODSB
+ 0B17  3A C3	 	 	        CMP     AL,BL
+ 0B19  74 0E	 	 	        JZ      NEXT
+ 0B1B  80 FB 3A	 	 	        CMP     BL,":"          ;Is it a date s
+	 	 	 	eperator?
+ 0B1E  75 04	 	 	        JNZ     DATESEP
+ 0B20  4E	 	 	        DEC     SI
+ 0B21  B2 00	 	 	        MOV     DL,0
+ 0B23  C3	 	 	RET100: RET                     ;Time may have 
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-49
+
+
+
+	 	 	 	only an hour specified
+ 0B24	 	 	 	DATESEP:
+ 0B24  3A C7	 	 	        CMP     AL,BH
+ 0B26  F9	 	 	        STC
+ 0B27  75 FA	 	 	        JNZ     RET100
+ 0B29  E8 0B2F R	 	NEXT:   CALL    GETNUM
+ 0B2C  8A D4	 	 	        MOV     DL,AH           ;Put in positio
+	 	 	 	n
+ 0B2E  C3	 	 	        RET
+ 	 	 	 	
+ 0B2F	 	 	 	GETNUM:
+ 0B2F  E8 0B42 R	 	        CALL    INDIG
+ 0B32  72 EF	 	 	        JC      RET100
+ 0B34  8A E0	 	 	        MOV     AH,AL           ;Save first dig
+	 	 	 	it
+ 0B36  E8 0B42 R	 	        CALL    INDIG           ;Another digit?
+ 0B39  72 04	 	 	        JC      OKRET
+ 0B3B  D5 0A	 	 	        AAD                     ;Convert unpack
+	 	 	 	ed BCD to decimal
+ 0B3D  8A E0	 	 	        MOV     AH,AL
+ 0B3F	 	 	 	OKRET:
+ 0B3F  0C 01	 	 	        OR      AL,1
+ 0B41  C3	 	 	RET110: RET
+ 	 	 	 	
+ 0B42	 	 	 	INDIG:
+ 0B42  8A 04	 	 	        MOV     AL,BYTE PTR[SI]
+ 0B44  2C 30	 	 	        SUB     AL,"0"
+ 0B46  72 F9	 	 	        JC      RET110
+ 0B48  3C 0A	 	 	        CMP     AL,10
+ 0B4A  F5	 	 	        CMC
+ 0B4B  72 F4	 	 	        JC      RET110
+ 0B4D  46	 	 	        INC     SI
+ 0B4E  C3	 	 	        RET
+ 	 	 	 	
+ 0B4F	 	 	 	SHOW:
+ 0B4F  8A C5	 	 	        MOV     AL,CH
+ 0B51  B7 10	 	 	        MOV     BH,"0"-" "      ;Enable leading
+	 	 	 	 zero suppression
+ 0B53  E8 0B76 R	 	        CALL    OUT2
+ 0B56  8A C3	 	 	        MOV     AL,BL
+ 0B58  E8 0B8A R	 	        CALL    OUT
+ 0B5B  8A C1	 	 	        MOV     AL,CL
+ 0B5D  E8 0B76 R	 	        CALL    OUT2
+ 0B60  8A C3	 	 	        MOV     AL,BL
+ 0B62  E8 0B8A R	 	        CALL    OUT
+ 0B65  8A C6	 	 	        MOV     AL,DH
+ 0B67  E8 0B76 R	 	        CALL    OUT2
+ 0B6A  80 FB 3A	 	 	        CMP     BL,":"          ;Are we outputt
+	 	 	 	ing time?
+ 0B6D  75 05	 	 	        JNZ     SKIPIT
+ 0B6F  B0 2E	 	 	        MOV     AL,"."
+ 0B71  E8 0B8A R	 	        CALL    OUT
+ 0B74  8A C2	 	 	SKIPIT: MOV     AL,DL
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-50
+
+
+
+ 0B76	 	 	 	OUT2:   ;Output binary number as two ASCII digi
+	 	 	 	ts
+ 0B76  D4 0A	 	 	        AAM                     ;Convert binary
+	 	 	 	 to unpacked BCD
+ 0B78  86 C4	 	 	        XCHG    AL,AH
+ 0B7A  0D 3030	 	 	        OR      AX,3030H        ;Add "0" bias t
+	 	 	 	o both digits
+ 0B7D  3C 30	 	 	        CMP     AL,"0"          ;Is MSD zero?
+ 0B7F  75 02	 	 	        JNZ     NOSUP
+ 0B81  2A C7	 	 	        SUB     AL,BH           ;Suppress leadi
+	 	 	 	ng zero if enabled
+ 0B83	 	 	 	NOSUP:
+ 0B83  B7 00	 	 	        MOV     BH,0            ;Disable zero s
+	 	 	 	uppression
+ 0B85  E8 0B8A R	 	        CALL    OUT
+ 0B88  8A C4	 	 	        MOV     AL,AH
+ 0B8A	 	 	 	OUT:
+ 	 	 	 	;Print char in AL without affecting registers
+ 0B8A  92	 	 	        XCHG    AX,DX
+ 0B8B  50	 	 	        PUSH    AX
+ 0B8C  B4 02	 	 	        MOV     AH,OUTCH
+ 0B8E  CD 21	 	 	        INT     33
+ 0B90  58	 	 	        POP     AX
+ 0B91  92	 	 	        XCHG    AX,DX
+ 0B92  C3	 	 	        RET
+ 	 	 	 	
+ 0B93	 	 	 	EXELOAD:
+ 0B93  8C C8	 	 	        MOV     AX,CS
+ 0B95  05 00C0 90	 	        ADD     AX,LOADSEG
+ 0B99  A3 00FF R	 	        MOV     [EXEEND],AX     ;Store in EXEEN
+	 	 	 	D
+ 0B9C  BA 0101 R	 	        MOV     DX,OFFSET TRANGROUP:RUNVAR     
+	 	 	 	 ;Read header in here
+ 0B9F  B4 1A	 	 	        MOV     AH,SETDMA
+ 0BA1  CD 21	 	 	        INT     33
+ 0BA3  B9 001A	 	 	        MOV     CX,RUNVARSIZ    ;Amount of head
+	 	 	 	er info we need
+ 0BA6  BA 009A R	 	        MOV     DX,OFFSET TRANGROUP:EXEFCB
+ 0BA9  B4 27	 	 	        MOV     AH,RDBLK
+ 0BAB  CD 21	 	 	        INT     33              ;Read in header
+ 0BAD  0A C0	 	 	        OR      AL,AL
+ 0BAF  75 79	 	 	        JNZ     BADEXE          ;Must not reach
+	 	 	 	 EOF
+ 0BB1  A1 0109 R	 	        MOV     AX,[HEADSIZ]    ;Size of header
+	 	 	 	 in paragraphs
+ 	 	 	 	;Convert header size to 512-byte pages by multi
+	 	 	 	plying by 32 & rounding up
+ 0BB4  05 001F	 	 	        ADD     AX,31           ;Round up first
+ 0BB7  B1 05	 	 	        MOV     CL,5
+ 0BB9  D3 E8	 	 	        SHR     AX,CL           ;Multiply by 32
+ 0BBB  A3 00BB R	 	        MOV     [EXEFCB+RR],AX  ;Position in fi
+	 	 	 	le of program
+ 0BBE  C7 06 00A8 R 0200	        MOV     WORD PTR[EXEFCB+RECLEN],512 ;Se
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-51
+
+
+
+	 	 	 	t record size
+ 0BC4  83 C3 10	 	 	        ADD     BX,10H          ;First paragrap
+	 	 	 	h above parameter area
+ 0BC7  8B 16 0105 R	 	        MOV     DX,[PAGES]      ;Total size of 
+	 	 	 	file in 512-byte pages
+ 0BCB  2B D0	 	 	        SUB     DX,AX           ;Size of progra
+	 	 	 	m in pages
+ 0BCD  89 16 0105 R	 	        MOV     [PSIZE],DX
+ 0BD1  D3 E2	 	 	        SHL     DX,CL           ;Convert pages 
+	 	 	 	back to paragraphs
+ 0BD3  8B C2	 	 	        MOV     AX,DX
+ 0BD5  03 D3	 	 	        ADD     DX,BX           ;Size + start =
+	 	 	 	 minimum memory (paragr.)
+ 0BD7  8B 0E 00FF R	 	        MOV     CX,[EXEEND]     ;Get memory siz
+	 	 	 	e in paragraphs
+ 0BDB  3B D1	 	 	        CMP     DX,CX           ;Enough memory?
+ 0BDD  77 51	 	 	        JA      SHRTERR
+ 0BDF  8B 16 0111 R	 	        MOV     DX,[INITSP]
+ 0BE3  83 C2 0F	 	 	        ADD     DX,15
+ 0BE6  D1 EA	 	 	        SHR     DX,1
+ 0BE8  D1 EA	 	 	        SHR     DX,1
+ 0BEA  D1 EA	 	 	        SHR     DX,1
+ 0BEC  D1 EA	 	 	        SHR     DX,1
+ 0BEE  03 16 010F R	 	        ADD     DX,[INITSS]
+ 0BF2  03 D3	 	 	        ADD     DX,BX           ;Adjusted value
+	 	 	 	 of SP
+ 0BF4  3B D1	 	 	        CMP     DX,CX           ;Is it valid?
+ 0BF6  77 38	 	 	        JA      SHRTERR
+ 0BF8  83 3E 010D R FF	 	        CMP     [LOADLOW],-1    ;Load low or hi
+	 	 	 	gh?
+ 0BFD  74 04	 	 	        JZ      LOAD            ;If low, load a
+	 	 	 	t segment BX
+ 0BFF  2B C8	 	 	        SUB     CX,AX           ;Memory size - 
+	 	 	 	program size = load addr.
+ 0C01  8B D9	 	 	        MOV     BX,CX
+ 0C03	 	 	 	LOAD:
+ 0C03  8B EB	 	 	        MOV     BP,BX           ;Save load segm
+	 	 	 	ent
+ 0C05	 	 	 	LOAD1:
+ = 00C0	 	 	 	LOADSEG EQU     (LOAD1-ZERO6)/16
+ 0C05  1E	 	 	        PUSH    DS
+ 0C06  8E DB	 	 	        MOV     DS,BX
+ 0C08  33 D2	 	 	        XOR     DX,DX           ;Address 0 in s
+	 	 	 	egment
+ 0C0A  B4 1A	 	 	        MOV     AH,SETDMA
+ 0C0C  CD 21	 	 	        INT     33              ;Set load addre
+	 	 	 	ss
+ 0C0E  1F	 	 	        POP     DS
+ 0C0F  8B 0E 0105 R	 	        MOV     CX,[PSIZE]      ;Number of reco
+	 	 	 	rds to read
+ 0C13  BA 009A R	 	        MOV     DX,OFFSET TRANGROUP:EXEFCB
+ 0C16  B4 27	 	 	        MOV     AH,RDBLK
+ 0C18  CD 21	 	 	        INT     33              ;Read in up to 
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-52
+
+
+
+	 	 	 	64K
+ 0C1A  29 0E 0105 R	 	        SUB     [PSIZE],CX      ;Decrement coun
+	 	 	 	t by amount read
+ 0C1E  74 16	 	 	        JZ      HAVEXE          ;Did we get it 
+	 	 	 	all?
+ 0C20  A8 01	 	 	        TEST    AL,1            ;Check return c
+	 	 	 	ode if not
+ 0C22  75 06	 	 	        JNZ     BADEXE          ;Must be zero i
+	 	 	 	f more to come
+ 0C24  81 C3 0FE0	 	        ADD     BX,1000H-20H    ;Bump data segm
+	 	 	 	ent 64K minus one record
+ 0C28  EB DB	 	 	        JMP     SHORT LOAD1             ;Get ne
+	 	 	 	xt 64K block
+ 	 	 	 	
+ 0C2A	 	 	 	BADEXE:
+ 0C2A  BA 0053 R	 	        MOV     DX,OFFSET TRANGROUP:EXEBAD
+ 0C2D  E9 03E1 R	 	        JMP     ERROR
+ 	 	 	 	
+ 0C30	 	 	 	SHRTERR:
+ 0C30  BA 00FC R	 	        MOV     DX,OFFSET TRANGROUP:TOOBIG
+ 0C33  E9 03E1 R	 	        JMP     ERROR
+ 	 	 	 	
+ 0C36	 	 	 	HAVEXE:
+ 0C36  A1 0119 R	 	        MOV     AX,[RELTAB]     ;Get position o
+	 	 	 	f table
+ 0C39  A3 00BB R	 	        MOV     [EXEFCB+RR],AX  ;Set in random 
+	 	 	 	record field
+ 0C3C  C7 06 00A8 R 0001	        MOV     WORD PTR[EXEFCB+RECLEN],1  ;Set
+	 	 	 	 one-byte record
+ 0C42  BA 0101 R	 	        MOV     DX,OFFSET TRANGROUP:RELPT      
+	 	 	 	 ;4-byte buffer for relocation address
+ 0C45  B4 1A	 	 	        MOV     AH,SETDMA
+ 0C47  CD 21	 	 	        INT     33
+ 0C49  83 3E 0107 R 00	 	        CMP     [RELCNT],0
+ 0C4E  74 22	 	 	        JZ      NOREL
+ 0C50	 	 	 	RELOC:
+ 0C50  B4 27	 	 	        MOV     AH,RDBLK
+ 0C52  BA 009A R	 	        MOV     DX,OFFSET TRANGROUP:EXEFCB
+ 0C55  B9 0004	 	 	        MOV     CX,4
+ 0C58  CD 21	 	 	        INT     33              ;Read in one re
+	 	 	 	location pointer
+ 0C5A  0A C0	 	 	        OR      AL,AL           ;Check return c
+	 	 	 	ode
+ 0C5C  75 CC	 	 	        JNZ     BADEXE
+ 0C5E  8B 3E 0101 R	 	        MOV     DI,[RELPT]      ;Get offset of 
+	 	 	 	relocation pointer
+ 0C62  A1 0103 R	 	        MOV     AX,[RELSEG]     ;Get segment
+ 0C65  03 C5	 	 	        ADD     AX,BP           ;Bias segment w
+	 	 	 	ith actual load segment
+ 0C67  8E C0	 	 	        MOV     ES,AX
+ 0C69  26: 01 2D	 	        ADD     WORD PTR ES:[DI],BP            
+	 	 	 	 ;Relocate
+ 0C6C  FF 0E 0107 R	 	        DEC     [RELCNT]        ;Count off
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-53
+
+
+
+ 0C70  75 DE	 	 	        JNZ     RELOC
+ 	 	 	 	;Set up exit conditions
+ 0C72	 	 	 	NOREL:
+ 0C72  A1 010F R	 	        MOV     AX,[INITSS]
+ 0C75  03 C5	 	 	        ADD     AX,BP
+ 0C77  FA	 	 	        CLI
+ 0C78  8E D0	 	 	        MOV     SS,AX           ;Initialize SS
+ 0C7A  8B 26 0111 R	 	        MOV     SP,[INITSP]
+ 0C7E  FB	 	 	        STI
+ 0C7F  01 2E 0117 R	 	        ADD     [INITCS],BP
+ 0C83  A1 0080 R	 	        MOV     AX,[TPA]        ;Get pointer to
+	 	 	 	 parameter area
+ 0C86  8B 0E 0092 R	 	        MOV     CX,[BYTCNT]     ;Size of TPA se
+	 	 	 	gment
+ 0C8A  8E C0	 	 	        MOV     ES,AX
+ 0C8C  8E D8	 	 	        MOV     DS,AX           ;Set segment re
+	 	 	 	gisters to point to it
+ 0C8E  E8 0C96 R	 	        CALL    SETUP
+ 0C91  2E: FF 2E 0115 R	 	        JMP     DWORD PTR CS:[INITIP]   ;Long j
+	 	 	 	ump to program
+ 	 	 	 	
+ 0C96	 	 	 	SETUP:
+ 0C96  80 E1 F0	 	 	        AND     CL,0F0H         ;Adjust to even
+	 	 	 	 paragraph boundary
+ 0C99  A1 0006	 	 	        MOV     AX,WORD PTR DS:[6]             
+	 	 	 	 ;Get current memory size
+ 0C9C  2B C1	 	 	        SUB     AX,CX           ;Find out how m
+	 	 	 	uch we're changing it
+ 0C9E  89 0E 0006	 	        MOV     WORD PTR DS:[6],CX
+ 0CA2  B1 04	 	 	        MOV     CL,4
+ 0CA4  D3 F8	 	 	        SAR     AX,CL           ;Convert to a s
+	 	 	 	egment address
+ 0CA6  01 06 0008	 	        ADD     WORD PTR DS:[8],AX             
+	 	 	 	 ;Adjust long jump to go to same place
+ 0CAA  BA 0080	 	 	        MOV     DX,80H
+ 0CAD  B4 1A	 	 	        MOV     AH,SETDMA
+ 0CAF  CD 21	 	 	        INT     33              ;Set default di
+	 	 	 	sk transfer address
+ 0CB1  2E: A1 0087 R	 	        MOV     AX,WORD PTR CS:[PARM1]  ;Pass o
+	 	 	 	n info about FCBs
+ 0CB5  33 C9	 	 	        XOR     CX,CX
+ 0CB7  8B D1	 	 	        MOV     DX,CX           ;Assume no batc
+	 	 	 	h file
+ 	 	 	 	ASSUME  CS:RESGROUP
+ 0CB9  2E: F6 06 0178 R FF	        TEST    CS:[BATCH],-1   ;Batch file in 
+	 	 	 	progress?
+ 	 	 	 	ASSUME  CS:TRANGROUP
+ 0CBF  74 08	 	 	        JZ      RET120          ;If not, all se
+	 	 	 	t up
+ 0CC1  2E: 8B 0E 0082 R	 	        MOV     CX,CS:[RESSEG]
+ 0CC6  BA 013F R	 	        MOV     DX,OFFSET RESGROUP:BATFCB      
+	 	 	 	 ;CX:DX points to batch FCB
+ 0CC9  C3	 	 	RET120: RET
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	1-54
+
+
+
+ = 0CCA	 	 	 	TRANCODESIZE    EQU     $-ZERO6
+ 0CCA	 	 	 	TRANCODE        ENDS
+ = 0E1D	 	 	 	COMLEN  EQU     TRANDATASIZE+TRANCODESIZE-102H 
+	 	 	 	         ;End of COMMAND load. ZERO Needed to m
+	 	 	 	ake COMLEN absolute
+ = 010C	 	 	 	TRNLEN  EQU     (PRETRLEN+TRANCODESIZE+TRANDATA
+	 	 	 	SIZE+15)/16              ;Length of transient i
+	 	 	 	n paragraphs
+ 	 	 	 	        END     PROGSTART
+
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	Symbols
+	 	 	 	-1
+
+
+
+Segments and groups:
+
+	 	N a m e	 	 	Size	align	combine	class
+
+RESGROUP . . . . . . . . . . . .	GROUP
+  CODERES. . . . . . . . . . . . .	02B5	PARA  	NONE	
+  DATARES. . . . . . . . . . . . .	01AB	BYTE  	NONE	
+  INIT . . . . . . . . . . . . . .	006D	BYTE  	NONE	
+  TAIL . . . . . . . . . . . . . .	0000	PARA  	NONE	
+TRANGROUP. . . . . . . . . . . .	GROUP
+  TRANCODE . . . . . . . . . . . .	0CCA	PARA  	NONE	
+  TRANDATA . . . . . . . . . . . .	0255	BYTE  	NONE	
+  TRANSPACE. . . . . . . . . . . .	019B	BYTE  	NONE	
+
+Symbols:            
+
+	 	N a m e	 	 	Type	Value	Attr         
+
+AGAIN. . . . . . . . . . . . . .	L NEAR 	0461	TRANCODE
+ALLFIL . . . . . . . . . . . . .	L NEAR 	05BD	TRANCODE
+AMBIG. . . . . . . . . . . . . .	L NEAR 	06B4	TRANCODE
+AMBSPEC. . . . . . . . . . . . .	L NEAR 	05B6	TRANCODE
+APPEND . . . . . . . . . . . . .	L BYTE 	0104	TRANSPACE
+ARG1S. . . . . . . . . . . . . .	L WORD 	008B	TRANSPACE
+ARG2S. . . . . . . . . . . . . .	L WORD 	008D	TRANSPACE
+ASCII. . . . . . . . . . . . . .	L BYTE 	0106	TRANSPACE
+ASK. . . . . . . . . . . . . . .	L NEAR 	01DE	CODERES
+ASKAGN . . . . . . . . . . . . .	L NEAR 	05C2	TRANCODE
+ASKEND . . . . . . . . . . . . .	L NEAR 	011F	CODERES
+ASWITCH. . . . . . . . . . . . .	Number	0008	
+BADCOM . . . . . . . . . . . . .	L NEAR 	03DE	TRANCODE
+BADCOMJ. . . . . . . . . . . . .	L NEAR 	02D0	TRANCODE
+BADCOMJ1 . . . . . . . . . . . .	L NEAR 	019D	TRANCODE
+BADDAT . . . . . . . . . . . . .	L BYTE 	017E	TRANDATA
+BADDRV . . . . . . . . . . . . .	L BYTE 	011D	TRANDATA
+BADEXE . . . . . . . . . . . . .	L NEAR 	0C2A	TRANCODE
+BADFAT . . . . . . . . . . . . .	L BYTE 	008C	DATARES
+BADNAM . . . . . . . . . . . . .	L BYTE 	0000	TRANDATA
+BADSW. . . . . . . . . . . . . .	L NEAR 	028C	TRANCODE
+BADSWT . . . . . . . . . . . . .	L BYTE 	0158	TRANDATA
+BADTIM . . . . . . . . . . . . .	L BYTE 	01B1	TRANDATA
+BATBYT . . . . . . . . . . . . .	L BYTE 	01A2	DATARES
+BATCH. . . . . . . . . . . . . .	L BYTE 	0178	DATARES
+BATCOM . . . . . . . . . . . . .	L NEAR 	031D	TRANCODE
+BATEOF . . . . . . . . . . . . .	L NEAR 	09B5	TRANCODE
+BATFCB . . . . . . . . . . . . .	L BYTE 	013F	DATARES
+BIAS . . . . . . . . . . . . . .	L NEAR 	0A6C	TRANCODE
+BINARYAPP. . . . . . . . . . . .	L NEAR 	07A1	TRANCODE
+BINCLOS. . . . . . . . . . . . .	L NEAR 	0916	TRANCODE
+BINREAD. . . . . . . . . . . . .	L NEAR 	08D5	TRANCODE
+BITS . . . . . . . . . . . . . .	L WORD 	00FB	TRANSPACE
+BLANKZER . . . . . . . . . . . .	L NEAR 	0597	TRANCODE
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	Symbols
+	 	 	 	-2
+
+
+
+BSWITCH. . . . . . . . . . . . .	Number	0010	
+BUILDNAM . . . . . . . . . . . .	L NEAR 	0857	TRANCODE
+BUILDNAME. . . . . . . . . . . .	L NEAR 	0854	TRANCODE
+BYTCNT . . . . . . . . . . . . .	L WORD 	0092	TRANSPACE
+CATALOG. . . . . . . . . . . . .	L NEAR 	0412	TRANCODE
+CFLAG. . . . . . . . . . . . . .	L BYTE 	0090	TRANSPACE
+CHECKREAD. . . . . . . . . . . .	L NEAR 	086F	TRANCODE
+CHK. . . . . . . . . . . . . . .	L NEAR 	028D	CODERES
+CHKCNT . . . . . . . . . . . . .	L NEAR 	03E8	TRANCODE
+CHKDRV . . . . . . . . . . . . .	L BYTE 	0084	TRANSPACE
+CHKSAME. . . . . . . . . . . . .	L NEAR 	0157	CODERES
+CHKSUM . . . . . . . . . . . . .	L NEAR 	027C	CODERES
+CLOSE. . . . . . . . . . . . . .	Number	0010	
+CLOSEFIL . . . . . . . . . . . .	L NEAR 	08E8	TRANCODE
+COM. . . . . . . . . . . . . . .	L BYTE 	00A3	TRANSPACE	Length 
+	 	 	 	=0003
+COMBAD . . . . . . . . . . . . .	L BYTE 	00A9	DATARES
+COMBUF . . . . . . . . . . . . .	L BYTE 	0252	TRANDATA
+COMDAT . . . . . . . . . . . . .	L NEAR 	0A47	TRANCODE
+COMDRV . . . . . . . . . . . . .	Number	0000	
+COMFCB . . . . . . . . . . . . .	L BYTE 	0179	DATARES
+COMJMP . . . . . . . . . . . . .	L NEAR 	02CD	TRANCODE
+COMLEN . . . . . . . . . . . . .	Number	0E1D	
+COMLOAD. . . . . . . . . . . . .	L NEAR 	039F	TRANCODE
+COMMAND. . . . . . . . . . . . .	L NEAR 	0104	TRANCODE
+COMPNAME . . . . . . . . . . . .	L NEAR 	0863	TRANCODE
+COMSW. . . . . . . . . . . . . .	L WORD 	0089	TRANSPACE
+COMTAB . . . . . . . . . . . . .	L BYTE 	01F9	TRANDATA
+COMTAIL. . . . . . . . . . . . .	L NEAR 	020F	TRANCODE
+COMTIM . . . . . . . . . . . . .	L NEAR 	0AB9	TRANCODE
+CONPROC. . . . . . . . . . . . .	L NEAR 	0000	INIT
+CONTC. . . . . . . . . . . . . .	L NEAR 	0107	CODERES
+CONVLP . . . . . . . . . . . . .	L NEAR 	055C	TRANCODE
+CONVWRD. . . . . . . . . . . . .	L NEAR 	05A5	TRANCODE
+COPERR . . . . . . . . . . . . .	L NEAR 	0991	TRANCODE
+COPERRJ. . . . . . . . . . . . .	L NEAR 	079E	TRANCODE
+COPIED . . . . . . . . . . . . .	L BYTE 	00E3	TRANDATA
+COPY . . . . . . . . . . . . . .	L NEAR 	0650	TRANCODE
+COPYLP . . . . . . . . . . . . .	L NEAR 	089A	TRANCODE
+CRLF . . . . . . . . . . . . . .	L NEAR 	0226	CODERES
+CRLF2. . . . . . . . . . . . . .	L NEAR 	0541	TRANCODE
+CURDAT . . . . . . . . . . . . .	L BYTE 	018D	TRANDATA
+CURDRV . . . . . . . . . . . . .	L BYTE 	0086	TRANSPACE
+CURTIM . . . . . . . . . . . . .	L BYTE 	01C0	TRANDATA
+DATE . . . . . . . . . . . . . .	L NEAR 	09F8	TRANCODE
+DATERR . . . . . . . . . . . . .	L NEAR 	0A82	TRANCODE
+DATESEP. . . . . . . . . . . . .	L NEAR 	0B24	TRANCODE
+DATINIT. . . . . . . . . . . . .	L NEAR 	09E1	TRANCODE
+DELETE . . . . . . . . . . . . .	Number	0013	
+DELIM. . . . . . . . . . . . . .	L NEAR 	09C5	TRANCODE
+DEST . . . . . . . . . . . . . .	L BYTE 	00A6	TRANSPACE	Length 
+	 	 	 	=0025
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	Symbols
+	 	 	 	-3
+
+
+
+DESTNAME . . . . . . . . . . . .	L BYTE 	00CB	TRANSPACE	Length 
+	 	 	 	=000B
+DIGIT. . . . . . . . . . . . . .	L NEAR 	0590	TRANCODE
+DIR. . . . . . . . . . . . . . .	L NEAR 	0441	TRANCODE
+DIRBUF . . . . . . . . . . . . .	L BYTE 	00D6	TRANSPACE	Length 
+	 	 	 	=0025
+DIRMES . . . . . . . . . . . . .	L BYTE 	00F3	TRANDATA
+DISP32BITS . . . . . . . . . . .	L NEAR 	0553	TRANCODE
+DISPSIZE . . . . . . . . . . . .	L NEAR 	054B	TRANCODE
+DOCOM. . . . . . . . . . . . . .	L NEAR 	01D9	TRANCODE
+DOREAD . . . . . . . . . . . . .	L NEAR 	07B6	TRANCODE
+DRV0 . . . . . . . . . . . . . .	L NEAR 	0056	INIT
+DRVBAD . . . . . . . . . . . . .	L NEAR 	0298	TRANCODE
+DRVCHK . . . . . . . . . . . . .	L NEAR 	02D6	TRANCODE
+DRVGD. . . . . . . . . . . . . .	L NEAR 	01F4	TRANCODE
+DRVLET . . . . . . . . . . . . .	L BYTE 	0071	DATARES
+DRVNUM . . . . . . . . . . . . .	L BYTE 	006A	DATARES
+DSKERR . . . . . . . . . . . . .	L NEAR 	0196	CODERES
+DSKRESET . . . . . . . . . . . .	Number	000D	
+EACHPARM . . . . . . . . . . . .	L NEAR 	0335	TRANCODE
+ENDBATMES. . . . . . . . . . . .	L BYTE 	0120	DATARES
+ENDCOPY. . . . . . . . . . . . .	L NEAR 	071C	TRANCODE
+ENDDIR . . . . . . . . . . . . .	L NEAR 	03F5	TRANCODE
+ENDPARM. . . . . . . . . . . . .	L NEAR 	034E	TRANCODE
+ERASE. . . . . . . . . . . . . .	L NEAR 	05B0	TRANCODE
+ERR0 . . . . . . . . . . . . . .	L BYTE 	000E	DATARES
+ERR10. . . . . . . . . . . . . .	L BYTE 	0041	DATARES
+ERR12. . . . . . . . . . . . . .	L BYTE 	004D	DATARES
+ERR2 . . . . . . . . . . . . . .	L BYTE 	001C	DATARES
+ERR4 . . . . . . . . . . . . . .	L BYTE 	0026	DATARES
+ERR6 . . . . . . . . . . . . . .	L BYTE 	002B	DATARES
+ERR8 . . . . . . . . . . . . . .	L BYTE 	0030	DATARES
+ERRJ . . . . . . . . . . . . . .	L NEAR 	0603	TRANCODE
+ERRMES . . . . . . . . . . . . .	L BYTE 	005C	DATARES
+ERROR. . . . . . . . . . . . . .	L NEAR 	03E1	TRANCODE
+EXEBAD . . . . . . . . . . . . .	L BYTE 	0053	TRANDATA
+EXECUTE. . . . . . . . . . . . .	L NEAR 	0376	TRANCODE
+EXEEND . . . . . . . . . . . . .	L WORD 	00FF	TRANSPACE
+EXEFCB . . . . . . . . . . . . .	L WORD 	009A	TRANSPACE
+EXELOAD. . . . . . . . . . . . .	L NEAR 	0B93	TRANCODE
+EXISTS . . . . . . . . . . . . .	L NEAR 	095F	TRANCODE
+EXIT . . . . . . . . . . . . . .	L NEAR 	0201	CODERES
+EXTERNAL . . . . . . . . . . . .	L NEAR 	02DC	TRANCODE
+FALSE. . . . . . . . . . . . . .	Number	0000	
+FATERR . . . . . . . . . . . . .	L NEAR 	0207	CODERES
+FCB. . . . . . . . . . . . . . .	Number	005C	
+FILECNT. . . . . . . . . . . . .	L WORD 	0098	TRANSPACE
+FILLEN . . . . . . . . . . . . .	Number	0010	
+FILTYP . . . . . . . . . . . . .	L BYTE 	0085	TRANSPACE
+FINDCOM. . . . . . . . . . . . .	L NEAR 	02A3	TRANCODE
+FIRSTSRC . . . . . . . . . . . .	L NEAR 	072F	TRANCODE
+FLAGER . . . . . . . . . . . . .	L BYTE 	008F	TRANSPACE
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	Symbols
+	 	 	 	-4
+
+
+
+FLSHFIL. . . . . . . . . . . . .	L NEAR 	0934	TRANCODE
+FNDCOM . . . . . . . . . . . . .	L NEAR 	029E	TRANCODE
+FULDIR . . . . . . . . . . . . .	L BYTE 	007F	TRANDATA
+FULLSCR. . . . . . . . . . . . .	L WORD 	00FD	TRANSPACE
+GETBATBYT. . . . . . . . . . . .	L NEAR 	09A2	TRANCODE
+GETBUF . . . . . . . . . . . . .	L NEAR 	0AF9	TRANCODE
+GETCOM . . . . . . . . . . . . .	L NEAR 	0130	TRANCODE
+GETCOMDSK. . . . . . . . . . . .	L NEAR 	0217	CODERES
+GETDAT . . . . . . . . . . . . .	L NEAR 	0A3E	TRANCODE
+GETDATE. . . . . . . . . . . . .	Number	002A	
+GETDEST. . . . . . . . . . . . .	L NEAR 	0673	TRANCODE
+GETDRV . . . . . . . . . . . . .	Number	0019	
+GETFAT . . . . . . . . . . . . .	Number	001B	
+GETNUM . . . . . . . . . . . . .	L NEAR 	0B2F	TRANCODE
+GETTIM . . . . . . . . . . . . .	L NEAR 	0AAE	TRANCODE
+GETTIME. . . . . . . . . . . . .	Number	002C	
+HAVCOD . . . . . . . . . . . . .	L NEAR 	01C8	CODERES
+HAVCOM . . . . . . . . . . . . .	L NEAR 	0165	CODERES
+HAVDESTNAM . . . . . . . . . . .	L NEAR 	068B	TRANCODE
+HAVEXE . . . . . . . . . . . . .	L NEAR 	0C36	TRANCODE
+HAVPARM. . . . . . . . . . . . .	L NEAR 	0357	TRANCODE
+HEADER . . . . . . . . . . . . .	L BYTE 	0059	INIT
+HEADSIZ. . . . . . . . . . . . .	L WORD 	0109	TRANSPACE
+HIGHMEM. . . . . . . . . . . . .	Alias	FALSE	 	
+IBMVER . . . . . . . . . . . . .	Alias	FALSE	 	
+ID . . . . . . . . . . . . . . .	L BYTE 	009B	TRANSPACE	Length 
+	 	 	 	=0008
+IDLEN. . . . . . . . . . . . . .	L BYTE 	009A	TRANSPACE
+INBUF. . . . . . . . . . . . . .	Number	000A	
+INCHAR . . . . . . . . . . . . .	Number	0001	
+INDIG. . . . . . . . . . . . . .	L NEAR 	0B42	TRANCODE
+INEXACT. . . . . . . . . . . . .	L BYTE 	0103	TRANSPACE
+INITADD. . . . . . . . . . . . .	L BYTE 	01A7	DATARES	Length =0004
+INITCS . . . . . . . . . . . . .	L WORD 	0117	TRANSPACE
+INITIP . . . . . . . . . . . . .	L WORD 	0115	TRANSPACE
+INITSIZE . . . . . . . . . . . .	Number	006D	
+INITSP . . . . . . . . . . . . .	L WORD 	0111	TRANSPACE
+INITSS . . . . . . . . . . . . .	L WORD 	010F	TRANSPACE
+INLINE . . . . . . . . . . . . .	L NEAR 	0B0F	TRANCODE
+IOTYP. . . . . . . . . . . . . .	L BYTE 	0063	DATARES
+LINCNT . . . . . . . . . . . . .	L BYTE 	0096	TRANSPACE
+LINLEN . . . . . . . . . . . . .	L BYTE 	0097	TRANSPACE
+LINPERPAG. . . . . . . . . . . .	Number	0017	
+LOAD . . . . . . . . . . . . . .	L NEAR 	0C03	TRANCODE
+LOAD1. . . . . . . . . . . . . .	L NEAR 	0C05	TRANCODE
+LOADCOM. . . . . . . . . . . . .	L NEAR 	0230	CODERES
+LOADING. . . . . . . . . . . . .	L BYTE 	013E	DATARES
+LOADLOW. . . . . . . . . . . . .	L WORD 	010D	TRANSPACE
+LOADSEG. . . . . . . . . . . . .	Number	00C0	
+LOADSW . . . . . . . . . . . . .	L NEAR 	084E	TRANCODE
+LODCOM . . . . . . . . . . . . .	L NEAR 	013A	CODERES
+LOSTERR. . . . . . . . . . . . .	L BYTE 	00B9	TRANDATA
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	Symbols
+	 	 	 	-5
+
+
+
+LTPA . . . . . . . . . . . . . .	L WORD 	0103	CODERES
+MAKE . . . . . . . . . . . . . .	Number	0016	
+MEMSIZ . . . . . . . . . . . . .	L WORD 	01A3	DATARES
+MESBAS . . . . . . . . . . . . .	L WORD 	0000	DATARES
+MESSAGE. . . . . . . . . . . . .	L NEAR 	0401	TRANCODE
+MILLENIUM. . . . . . . . . . . .	L NEAR 	04AA	TRANCODE
+MISNAM . . . . . . . . . . . . .	L BYTE 	001B	TRANDATA
+MORN . . . . . . . . . . . . . .	L NEAR 	04D0	TRANCODE
+MOVPARM. . . . . . . . . . . . .	L NEAR 	0341	TRANCODE
+MSVER. . . . . . . . . . . . . .	Alias	TRUE	 	
+MULTAPP. . . . . . . . . . . . .	L NEAR 	07C4	TRANCODE
+MULTCLOS . . . . . . . . . . . .	L NEAR 	07DB	TRANCODE
+MULTDEST . . . . . . . . . . . .	L NEAR 	06E3	TRANCODE
+MYSEG. . . . . . . . . . . . . .	L WORD 	0105	CODERES
+NEEDBAT. . . . . . . . . . . . .	L BYTE 	0102	DATARES
+NEEDCOM. . . . . . . . . . . . .	L BYTE 	00BE	DATARES
+NEEDPARM . . . . . . . . . . . .	L NEAR 	0158	TRANCODE
+NEWDAT . . . . . . . . . . . . .	L BYTE 	019E	TRANDATA
+NEWLIN . . . . . . . . . . . . .	L BYTE 	0072	DATARES
+NEWTIM . . . . . . . . . . . . .	L BYTE 	01D1	TRANDATA
+NEXENT . . . . . . . . . . . . .	L NEAR 	04EA	TRANCODE
+NEXLIN . . . . . . . . . . . . .	L NEAR 	04F0	TRANCODE
+NEXT . . . . . . . . . . . . . .	L NEAR 	0B29	TRANCODE
+NEXTSNG. . . . . . . . . . . . .	L NEAR 	06F4	TRANCODE
+NOCHECK. . . . . . . . . . . . .	L NEAR 	02CB	TRANCODE
+NODATE . . . . . . . . . . . . .	L NEAR 	0928	TRANCODE
+NOPRMPT. . . . . . . . . . . . .	L NEAR 	05DD	TRANCODE
+NOPRT. . . . . . . . . . . . . .	L NEAR 	0764	TRANCODE
+NOREL. . . . . . . . . . . . . .	L NEAR 	0C72	TRANCODE
+NORMPERLIN . . . . . . . . . . .	Number	0001	
+NOSPACE. . . . . . . . . . . . .	L BYTE 	0065	TRANDATA
+NOSUP. . . . . . . . . . . . . .	L NEAR 	0B83	TRANCODE
+NOTAMBIG . . . . . . . . . . . .	L NEAR 	085E	TRANCODE
+NOTFND . . . . . . . . . . . . .	L BYTE 	0044	TRANDATA
+NOVER. . . . . . . . . . . . . .	L NEAR 	0699	TRANCODE
+NOWRITE. . . . . . . . . . . . .	L BYTE 	0105	TRANSPACE
+NXTADD . . . . . . . . . . . . .	L WORD 	0094	TRANSPACE
+OFFDATE. . . . . . . . . . . . .	Number	0014	
+OK . . . . . . . . . . . . . . .	L NEAR 	0257	TRANCODE
+OKRET. . . . . . . . . . . . . .	L NEAR 	0B3F	TRANCODE
+ONESPC . . . . . . . . . . . . .	L NEAR 	053C	TRANCODE
+OPEN . . . . . . . . . . . . . .	Number	000F	
+OPFILE . . . . . . . . . . . . .	L NEAR 	05F3	TRANCODE
+OUT. . . . . . . . . . . . . . .	L NEAR 	0B8A	TRANCODE
+OUT2 . . . . . . . . . . . . . .	L NEAR 	0B76	TRANCODE
+OUTBYTE. . . . . . . . . . . . .	L NEAR 	0581	TRANCODE
+OUTCH. . . . . . . . . . . . . .	Number	0002	
+OUTCNT . . . . . . . . . . . . .	L NEAR 	0532	TRANCODE
+OUTLP. . . . . . . . . . . . . .	L NEAR 	063F	TRANCODE
+OUTWORD. . . . . . . . . . . . .	L NEAR 	057A	TRANCODE
+OVERWR . . . . . . . . . . . . .	L BYTE 	0095	TRANDATA
+PAGES. . . . . . . . . . . . . .	L WORD 	0105	TRANSPACE
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	Symbols
+	 	 	 	-6
+
+
+
+PARM1. . . . . . . . . . . . . .	L BYTE 	0087	TRANSPACE
+PARM2. . . . . . . . . . . . . .	L BYTE 	0088	TRANSPACE
+PARMBUF. . . . . . . . . . . . .	L WORD 	0000	CODERES
+PARMTAB. . . . . . . . . . . . .	L WORD 	0164	DATARES	Length =000A
+PARSE. . . . . . . . . . . . . .	L NEAR 	07EA	TRANCODE
+PARSESRC . . . . . . . . . . . .	L NEAR 	07ED	TRANCODE
+PARSNAM. . . . . . . . . . . . .	L NEAR 	07FA	TRANCODE
+PARSW. . . . . . . . . . . . . .	L NEAR 	0813	TRANCODE
+PAUSE. . . . . . . . . . . . . .	L NEAR 	09D4	TRANCODE
+PAUSMES. . . . . . . . . . . . .	L BYTE 	0139	TRANDATA
+PLUS . . . . . . . . . . . . . .	L BYTE 	0107	TRANSPACE
+PRETRLEN . . . . . . . . . . . .	Number	019B	
+PRINTBUF . . . . . . . . . . . .	Number	0009	
+PRMTDAT. . . . . . . . . . . . .	L NEAR 	0A0B	TRANCODE
+PRMTTIM. . . . . . . . . . . . .	L NEAR 	0A9E	TRANCODE
+PROGSTART. . . . . . . . . . . .	L NEAR 	0100	CODERES
+PROMPT . . . . . . . . . . . . .	L BYTE 	00E0	DATARES
+PROMPTBAT. . . . . . . . . . . .	L NEAR 	0187	TRANCODE
+PROMPTCOM. . . . . . . . . . . .	L NEAR 	024B	CODERES
+PSIZE. . . . . . . . . . . . . .	L WORD 	0105	TRANSPACE
+PSWITCH. . . . . . . . . . . . .	Number	0002	
+PUTZ . . . . . . . . . . . . . .	L NEAR 	0908	TRANCODE
+RDBAT. . . . . . . . . . . . . .	L NEAR 	01BB	TRANCODE
+RDBLK. . . . . . . . . . . . . .	Number	0027	
+RDPARM . . . . . . . . . . . . .	L NEAR 	017B	TRANCODE
+READ . . . . . . . . . . . . . .	L BYTE 	0052	DATARES
+READBAT. . . . . . . . . . . . .	L NEAR 	01A0	TRANCODE
+READCOM. . . . . . . . . . . . .	L NEAR 	0256	CODERES
+READIN . . . . . . . . . . . . .	L NEAR 	0883	TRANCODE
+READSNG. . . . . . . . . . . . .	L NEAR 	070F	TRANCODE
+RECLEN . . . . . . . . . . . . .	Number	000E	
+RELCNT . . . . . . . . . . . . .	L WORD 	0107	TRANSPACE
+RELOC. . . . . . . . . . . . . .	L NEAR 	0C50	TRANCODE
+RELPT. . . . . . . . . . . . . .	L WORD 	0101	TRANSPACE
+RELSEG . . . . . . . . . . . . .	L WORD 	0103	TRANSPACE
+RELTAB . . . . . . . . . . . . .	L WORD 	0119	TRANSPACE
+RENAM. . . . . . . . . . . . . .	Number	0017	
+RENAME . . . . . . . . . . . . .	L NEAR 	05E9	TRANCODE
+RENERR . . . . . . . . . . . . .	L BYTE 	002D	TRANDATA
+REQUEST. . . . . . . . . . . . .	L BYTE 	0075	DATARES
+RESCODESIZE. . . . . . . . . . .	Number	02B5	
+RESDATASIZE. . . . . . . . . . .	Number	01AB	
+RESIDENT . . . . . . . . . . . .	L NEAR 	0182	CODERES
+RESSEG . . . . . . . . . . . . .	L WORD 	0082	TRANSPACE
+RET10. . . . . . . . . . . . . .	L NEAR 	022F	CODERES
+RET100 . . . . . . . . . . . . .	L NEAR 	0B23	TRANCODE
+RET110 . . . . . . . . . . . . .	L NEAR 	0B41	TRANCODE
+RET120 . . . . . . . . . . . . .	L NEAR 	0CC9	TRANCODE
+RET20. . . . . . . . . . . . . .	L NEAR 	05AF	TRANCODE
+RET30. . . . . . . . . . . . . .	L NEAR 	064F	TRANCODE
+RET35. . . . . . . . . . . . . .	L NEAR 	0826	TRANCODE
+RET40. . . . . . . . . . . . . .	L NEAR 	0882	TRANCODE
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	Symbols
+	 	 	 	-7
+
+
+
+RET50. . . . . . . . . . . . . .	L NEAR 	0933	TRANCODE
+RET60. . . . . . . . . . . . . .	L NEAR 	09A1	TRANCODE
+RET70. . . . . . . . . . . . . .	L NEAR 	09BC	TRANCODE
+RET80. . . . . . . . . . . . . .	L NEAR 	09D3	TRANCODE
+RET90. . . . . . . . . . . . . .	L NEAR 	09E0	TRANCODE
+RETSW. . . . . . . . . . . . . .	L NEAR 	025E	TRANCODE
+RETZF. . . . . . . . . . . . . .	L NEAR 	0824	TRANCODE
+RR . . . . . . . . . . . . . . .	Number	0021	
+RSTACK . . . . . . . . . . . . .	L WORD 	0100	CODERES
+RUNVAR . . . . . . . . . . . . .	L WORD 	0101	TRANSPACE
+RUNVARSIZ. . . . . . . . . . . .	Number	001A	
+SAMLIN . . . . . . . . . . . . .	L NEAR 	051F	TRANCODE
+SAVBATBYT. . . . . . . . . . . .	L NEAR 	01C2	TRANCODE
+SAVCHR . . . . . . . . . . . . .	L NEAR 	0278	TRANCODE
+SAVMES . . . . . . . . . . . . .	L NEAR 	01B4	CODERES
+SAVSIZ . . . . . . . . . . . . .	L NEAR 	012A	TRANCODE
+SAVTIM . . . . . . . . . . . . .	L NEAR 	0AE8	TRANCODE
+SCANNAM. . . . . . . . . . . . .	L NEAR 	066E	TRANCODE
+SCANOFF. . . . . . . . . . . . .	L NEAR 	09BD	TRANCODE
+SCROLL . . . . . . . . . . . . .	L NEAR 	051A	TRANCODE
+SEARCH . . . . . . . . . . . . .	L NEAR 	0830	TRANCODE
+SEARCHNEXT . . . . . . . . . . .	L NEAR 	0827	TRANCODE
+SEEKEND. . . . . . . . . . . . .	L NEAR 	0998	TRANCODE
+SELDRV . . . . . . . . . . . . .	Number	000E	
+SEPGD. . . . . . . . . . . . . .	L NEAR 	0A54	TRANCODE
+SETASC . . . . . . . . . . . . .	L NEAR 	0841	TRANCODE
+SETBASE. . . . . . . . . . . . .	Number	0026	
+SETDATE. . . . . . . . . . . . .	Number	002B	
+SETDMA . . . . . . . . . . . . .	Number	001A	
+SETDRV . . . . . . . . . . . . .	L NEAR 	0100	TRANCODE
+SETDRV1. . . . . . . . . . . . .	L NEAR 	02D3	TRANCODE
+SETSWT . . . . . . . . . . . . .	L NEAR 	042A	TRANCODE
+SETTIME. . . . . . . . . . . . .	Number	002D	
+SETUP. . . . . . . . . . . . . .	L NEAR 	0C96	TRANCODE
+SETVECT. . . . . . . . . . . . .	L NEAR 	0294	CODERES
+SHOHOURS . . . . . . . . . . . .	L NEAR 	04D6	TRANCODE
+SHONAME. . . . . . . . . . . . .	L NEAR 	0526	TRANCODE
+SHOW . . . . . . . . . . . . . .	L NEAR 	0B4F	TRANCODE
+SHOWDIR. . . . . . . . . . . . .	L NEAR 	0456	TRANCODE
+SHRTERR. . . . . . . . . . . . .	L NEAR 	0C30	TRANCODE
+SKIPIT . . . . . . . . . . . . .	L NEAR 	0B74	TRANCODE
+SKPMAK . . . . . . . . . . . . .	L NEAR 	0953	TRANCODE
+SNGCLOS. . . . . . . . . . . . .	L NEAR 	0719	TRANCODE
+SNGLCHK. . . . . . . . . . . . .	L NEAR 	07B9	TRANCODE
+SNGLOOP. . . . . . . . . . . . .	L NEAR 	0712	TRANCODE
+SNGLOOPJ . . . . . . . . . . . .	L NEAR 	079B	TRANCODE
+SOURCE . . . . . . . . . . . . .	L BYTE 	0108	TRANSPACE	Length 
+	 	 	 	=000B
+SPECDRV. . . . . . . . . . . . .	L BYTE 	0091	TRANSPACE
+SRCHFRST . . . . . . . . . . . .	Number	0011	
+SRCHNXT. . . . . . . . . . . . .	Number	0012	
+SRCPT. . . . . . . . . . . . . .	L WORD 	0101	TRANSPACE
+ The Microsoft MACRO Assembler             12-13-80    	PAGE	Symbols
+	 	 	 	-8
+
+
+
+STACK. . . . . . . . . . . . . .	L WORD 	019B	TRANSPACE
+SUM. . . . . . . . . . . . . . .	L WORD 	01A5	DATARES
+SUREMES. . . . . . . . . . . . .	L BYTE 	01E4	TRANDATA
+SWCOUNT. . . . . . . . . . . . .	Number	0005	
+SWITCH . . . . . . . . . . . . .	L NEAR 	0260	TRANCODE
+SWLIST . . . . . . . . . . . . .	L BYTE 	0293	TRANCODE
+SWLOOP . . . . . . . . . . . . .	L NEAR 	0262	TRANCODE
+SYM. . . . . . . . . . . . . . .	Number	003A	
+TIME . . . . . . . . . . . . . .	L NEAR 	0A8B	TRANCODE
+TIMERR . . . . . . . . . . . . .	L NEAR 	0AF0	TRANCODE
+TOOBIG . . . . . . . . . . . . .	L BYTE 	00FC	TRANDATA
+TPA. . . . . . . . . . . . . . .	L WORD 	0080	TRANSPACE
+TRANCODESIZE . . . . . . . . . .	Number	0CCA	
+TRANDATASIZE . . . . . . . . . .	Number	0255	
+TRANS. . . . . . . . . . . . . .	L WORD 	019E	DATARES
+TRANSPACESIZE. . . . . . . . . .	Number	0113	
+TRANSTART. . . . . . . . . . . .	L WORD 	0000	TAIL
+TRNLEN . . . . . . . . . . . . .	Number	010C	
+TRNSEG . . . . . . . . . . . . .	L WORD 	01A0	DATARES
+TRUE . . . . . . . . . . . . . .	Number	FFFF	
+TWOSPC . . . . . . . . . . . . .	L NEAR 	0539	TRANCODE
+TYPEFIL. . . . . . . . . . . . .	L NEAR 	0606	TRANCODE
+TYPELP . . . . . . . . . . . . .	L NEAR 	0630	TRANCODE
+USEALL . . . . . . . . . . . . .	L NEAR 	08D1	TRANCODE
+VSWITCH. . . . . . . . . . . . .	Number	0004	
+WEEKTAB. . . . . . . . . . . . .	L BYTE 	0169	TRANDATA
+WIDEPERLIN . . . . . . . . . . .	Number	0005	
+WRBLK. . . . . . . . . . . . . .	Number	0028	
+WRITE. . . . . . . . . . . . . .	L BYTE 	0057	DATARES
+WRONGCOM . . . . . . . . . . . .	L NEAR 	0277	CODERES
+WSWITCH. . . . . . . . . . . . .	Number	0001	
+XXX. . . . . . . . . . . . . . .	F PROC	03DD	TRANCODE	Length 
+	 	 	 	=0001
+YYY. . . . . . . . . . . . . . .	F PROC	09F7	TRANCODE	Length 
+	 	 	 	=0001
+ZERO1. . . . . . . . . . . . . .	Number	0000	DATARES
+ZERO2. . . . . . . . . . . . . .	Number	0000	TRANDATA
+ZERO3. . . . . . . . . . . . . .	Number	0000	TRANSPACE
+ZERO4. . . . . . . . . . . . . .	Number	0000	CODERES
+ZERO5. . . . . . . . . . . . . .	Number	0000	INIT
+ZERO6. . . . . . . . . . . . . .	Number	0000	TRANCODE
+
+Warning Severe
+Errors	Errors 
+0	0
+

@@ -1,0 +1,231 @@
+0000                       0001 ; HEX2BIN  version 1.02
+0000                       0002 ; Converts Intel hex format files to straight binary
+0000                       0003 
+0000                       0004 FCB:	EQU	5CH
+0000                       0005 READ:	EQU	20
+0000                       0006 SETDMA:	EQU	26
+0000                       0007 OPEN:	EQU	15
+0000                       0008 CLOSE:	EQU	16
+0000                       0009 CREATE:	EQU	22
+0000                       0010 DELETE:	EQU	19
+0000                       0011 BLKWRT:	EQU	40
+0000                       0012 GETSEG:	EQU	38
+0000                       0013 BUFSIZ:	EQU	1024
+0000                       0014 
+0000                       0015 	ORG	100H
+0100                       0016 	PUT	100H
+0100                       0017 
+0100                       0018 HEX2BIN:
+0100 BF 65 00              0019 	MOV	DI,FCB+9
+0103 82 3D 20              0020 	CMP	B,[DI]," "
+0106 75 05                 0021 	JNZ	HAVEXT
+0108 BE 61 02              0022 	MOV	SI,HEX
+010B A4                    0023 	MOVB
+010C A5                    0024 	MOVW
+010D                       0025 HAVEXT:
+010D                       0026 ;Get load offset (default is -100H)
+010D B1 04                 0027 	MOV	CL,4		;Needed for shifts
+010F C7 06 D6 02 00 FF     0028 	MOV	[OFFSET],-100H
+0115 BE 6D 00              0029 	MOV	SI,FCB+11H	;Scan second FCB for offset
+0118 AC                    0030 	LODB
+0119 3C 20                 0031 	CMP	AL," "		;Check if offset present
+011B 74 31                 0032 	JZ	HAVOFF
+011D C6 06 DA 02 00        0033 	MOV	B,[SIGN],0	;Assume positive sign for now
+0122 3C 2B                 0034 	CMP	AL,"+"
+0124 74 09                 0035 	JZ	GETOFF		;Get a positive offset
+0126 3C 2D                 0036 	CMP	AL,"-"
+0128 75 06                 0037 	JNZ	GETOFF1		;If not + or -, then not signed
+012A C6 06 DA 02 01        0038 	MOV	B,[SIGN],1	;Flag as negative offset
+012F                       0039 GETOFF:
+012F AC                    0040 	LODB			;Eat sign
+0130                       0041 GETOFF1:
+0130 E8 CE 00              0042 	CALL	HEXCHK		;Check for valid hex character
+0133 72 19                 0043 	JC	HAVOFF		;No offset if not valid
+0135 33 DB                 0044 	XOR	BX,BX		;Intialize offset sum to 0
+0137                       0045 CONVOFF:
+0137 D3 E3                 0046 	SHL	BX,CL		;Multiply current sum by 16
+0139 0A D8                 0047 	OR	BL,AL		;Add in current hex digit
+013B AC                    0048 	LODB			;Get next digit
+013C E8 C2 00              0049 	CALL	HEXCHK		;And convert it to binary
+013F 73 F6                 0050 	JNC	CONVOFF		;Loop until all hex digits read
+0141 F6 06 DA 02 FF        0051 	TEST	B,[SIGN],-1	;Check if offset was to be negative
+0146 74 02                 0052 	JZ	SAVOFF
+0148 F7 DB                 0053 	NEG	BX
+014A                       0054 SAVOFF:
+014A 89 1E D6 02           0055 	MOV	[OFFSET],BX
+014E                       0056 HAVOFF:
+014E BA 6E 00              0057 	MOV	DX,STARTSEG
+0151 8C D8                 0058 	MOV	AX,DS
+0153 03 D0                 0059 	ADD	DX,AX		;Compute load segment
+0155 B4 26                 0060 	MOV	AH,GETSEG
+0157 CD 21                 0061 	INT	33
+0159 8E C2                 0062 	MOV	ES,DX
+015B 26                    0063 	SEG	ES
+015C 8B 0E 06 00           0064 	MOV	CX,[6]		;Get size of segment
+0160 89 0E D8 02           0065 	MOV	[SEGSIZ],CX
+0164 33 C0                 0066 	XOR	AX,AX
+0166 8B F8                 0067 	MOV	DI,AX
+0168 8B E8                 0068 	MOV	BP,AX
+016A D1 E9                 0069 	SHR	CX
+016C F3                    0070 	REP
+016D AB                    0071 	STOW			;Fill entire segment with zeros
+016E B4 0F                 0072 	MOV	AH,OPEN
+0170 BA 5C 00              0073 	MOV	DX,FCB
+0173 CD 21                 0074 	INT	21H
+0175 0A C0                 0075 	OR	AL,AL
+0177 75 51                 0076 	JNZ	NOFIL
+0179 C6 06 7C 00 00        0077 	MOV	B,[FCB+32],0
+017E C7 06 6A 00 00 04     0078 	MOV	[FCB+14],BUFSIZ	;Set record size to buffer size
+0184 BA DB 02              0079 	MOV	DX,BUFFER
+0187 B4 1A                 0080 	MOV	AH,SETDMA
+0189 CD 21                 0081 	INT	33
+018B B4 14                 0082 	MOV	AH,READ
+018D BA 5C 00              0083 	MOV	DX,FCB		;All set up for sequential reads
+0190 BE DB 06              0084 	MOV	SI,BUFFER+BUFSIZ ;Flag input buffer as empty
+0193                       0085 READHEX:
+0193 E8 43 00              0086 	CALL	GETCH
+0196 3C 3A                 0087 	CMP	AL,":"		;Search for : to start line
+0198 75 F9                 0088 	JNZ	READHEX
+019A E8 51 00              0089 	CALL	GETBYT		;Get byte count
+019D 8A C8                 0090 	MOV	CL,AL
+019F B5 00                 0091 	MOV	CH,0
+01A1 E3 7D                 0092 	JCXZ	DONE
+01A3 E8 48 00              0093 	CALL	GETBYT		;Get high byte of load address
+01A6 8A F8                 0094 	MOV	BH,AL
+01A8 E8 43 00              0095 	CALL	GETBYT		;Get low byte of load address
+01AB 8A D8                 0096 	MOV	BL,AL
+01AD 03 1E D6 02           0097 	ADD	BX,[OFFSET]	;Add in offset
+01B1 8B FB                 0098 	MOV	DI,BX
+01B3 E8 38 00              0099 	CALL	GETBYT		;Throw away type byte
+01B6                       0100 READLN:
+01B6 3B 3E D8 02           0101 	CMP	DI,[SEGSIZ]
+01BA 73 17                 0102 	JAE	ADERR
+01BC E8 2F 00              0103 	CALL	GETBYT		;Get data byte
+01BF AA                    0104 	STOB
+01C0 3B FD                 0105 	CMP	DI,BP		;Check if this is the largest address so far
+01C2 76 02                 0106 	JBE	HAVBIG
+01C4 8B EF                 0107 	MOV	BP,DI		;Save new largest
+01C6                       0108 HAVBIG:
+01C6 E2 EE                 0109 	LOOP	READLN
+01C8 EB C9                 0110 	JP	READHEX
+01CA                       0111 
+01CA                       0112 NOFIL:
+01CA BA 8A 02              0113 	MOV	DX,NOFILE
+01CD                       0114 QUIT:
+01CD B4 09                 0115 	MOV	AH,9
+01CF CD 21                 0116 	INT	21H
+01D1 CD 20                 0117 	INT	20H
+01D3                       0118 
+01D3                       0119 ADERR:
+01D3 BA 99 02              0120 	MOV	DX,ADDR
+01D6 E9 43 00              0121 	JMP	SHOWERR
+01D9                       0122 
+01D9                       0123 GETCH:
+01D9 81 FE DB 06           0124 	CMP	SI,BUFFER+BUFSIZ
+01DD 75 09                 0125 	JNZ	NOREAD
+01DF CD 21                 0126 	INT	21H
+01E1 3C 01                 0127 	CMP	AL,1
+01E3 74 34                 0128 	JZ	ERROR
+01E5 BE DB 02              0129 	MOV	SI,BUFFER
+01E8                       0130 NOREAD:
+01E8 AC                    0131 	LODB
+01E9 3C 1A                 0132 	CMP	AL,1AH
+01EB 74 33                 0133 	JZ	DONE
+01ED C3                    0134 	RET
+01EE                       0135 
+01EE                       0136 GETBYT:
+01EE E8 20 00              0137 	CALL	HEXDIG
+01F1 8A D8                 0138 	MOV	BL,AL
+01F3 E8 1B 00              0139 	CALL	HEXDIG
+01F6 D0 E3                 0140 	SHL	BL
+01F8 D0 E3                 0141 	SHL	BL
+01FA D0 E3                 0142 	SHL	BL
+01FC D0 E3                 0143 	SHL	BL
+01FE 0A C3                 0144 	OR	AL,BL
+0200 C3                    0145 	RET
+0201                       0146 
+0201                       0147 HEXCHK:
+0201 2C 30                 0148 	SUB	AL,"0"
+0203 72 FB                 0149 	JC	RET
+0205 3C 0A                 0150 	CMP	AL,10
+0207 72 06                 0151 	JC	CMCRET
+0209 2C 07                 0152 	SUB	AL,"A"-"0"-10
+020B 72 F3                 0153 	JC	RET
+020D 3C 10                 0154 	CMP	AL,16
+020F                       0155 CMCRET:
+020F F5                    0156 	CMC
+0210 C3                    0157 	RET
+0211                       0158 
+0211                       0159 HEXDIG:
+0211 E8 C5 FF              0160 	CALL	GETCH
+0214 E8 EA FF              0161 	CALL	HEXCHK
+0217 73 F7                 0162 	JNC	RET
+0219                       0163 ERROR:
+0219 BA 64 02              0164 	MOV	DX,ERRMES
+021C                       0165 SHOWERR:
+021C B4 09                 0166 	MOV	AH,9
+021E CD 21                 0167 	INT	21H
+0220                       0168 DONE:
+0220 C7 06 65 00 43 4F     0169 	MOV	[FCB+9],4F00H+"C"	;"CO"
+0226 C6 06 67 00 4D        0170 	MOV	B,[FCB+11],"M"
+022B BA 5C 00              0171 	MOV	DX,FCB
+022E B4 16                 0172 	MOV	AH,CREATE
+0230 CD 21                 0173 	INT	21H
+0232 0A C0                 0174 	OR	AL,AL
+0234 75 25                 0175 	JNZ	NOROOM
+0236 33 C0                 0176 	XOR	AX,AX
+0238 A3 7D 00              0177 	MOV	[FCB+33],AX
+023B A3 7F 00              0178 	MOV	[FCB+35],AX	;Set RR field
+023E 40                    0179 	INC	AX
+023F A3 6A 00              0180 	MOV	[FCB+14],AX	;Set record size
+0242 33 D2                 0181 	XOR	DX,DX
+0244 1E                    0182 	PUSH	DS
+0245 06                    0183 	PUSH	ES
+0246 1F                    0184 	POP	DS		;Get load segment
+0247 B4 1A                 0185 	MOV	AH,SETDMA
+0249 CD 21                 0186 	INT	21H
+024B 1F                    0187 	POP	DS
+024C 8B CD                 0188 	MOV	CX,BP
+024E B4 28                 0189 	MOV	AH,BLKWRT
+0250 BA 5C 00              0190 	MOV	DX,FCB
+0253 CD 21                 0191 	INT	21H
+0255 B4 10                 0192 	MOV	AH,CLOSE
+0257 CD 21                 0193 	INT	21H
+0259                       0194 EXIT:
+0259 CD 20                 0195 	INT	20H
+025B                       0196 
+025B                       0197 NOROOM:
+025B BA C2 02              0198 	MOV	DX,DIRFUL
+025E E9 6C FF              0199 	JMP	QUIT
+0261                       0200 
+0261 48 45 58              0201 HEX:	DB	"HEX"
+0264 45 72 72 6F 72 20 69  0202 ERRMES:	DB	"Error in HEX file--conversion aborted$"
+     6E 20 48 45 58 20 66 
+     69 6C 65 2D 2D 63 6F 
+     6E 76 65 72 73 69 6F 
+     6E 20 61 62 6F 72 74 
+     65 64 24             
+028A 46 69 6C 65 20 6E 6F  0203 NOFILE:	DB	"File not found$"
+     74 20 66 6F 75 6E 64 
+     24                   
+0299 41 64 64 72 65 73 73  0204 ADDR:	DB	"Address out of range--conversion aborted$"
+     20 6F 75 74 20 6F 66 
+     20 72 61 6E 67 65 2D 
+     2D 63 6F 6E 76 65 72 
+     73 69 6F 6E 20 61 62 
+     6F 72 74 65 64 24    
+02C2 44 69 73 6B 20 64 69  0205 DIRFUL:	DB	"Disk directory full$"
+     72 65 63 74 6F 72 79 
+     20 66 75 6C 6C 24    
+02D6                       0206 
+02D6                       0207 OFFSET:	DS	2
+02D8                       0208 SEGSIZ:	DS	2
+02DA                       0209 SIGN:	DS	1
+02DB                       0210 BUFFER:	DS	BUFSIZ
+06DB                       0211 
+06DB                       0212 START:
+06DB                       0213 STARTSEG EQU	(START+15)/16
+
+
+Error Count =    0
+

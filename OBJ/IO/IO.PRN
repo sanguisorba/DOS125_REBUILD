@@ -1,0 +1,1947 @@
+0000                       0001 ; I/O System for 86-DOS version 1.20 and later. Revised 8-02-82.
+0000                       0002 ;
+0000                       0003 ; Assumes a CPU Support card at F0 hex for character I/O,
+0000                       0004 ; with disk drivers for SCP, Tarbell, or Cromemco controllers.
+0000                       0005 ;
+0000                       0006 ; Select whether console input is interrupt-driven or polled.
+0000                       0007 INTINP:		EQU	1
+0000                       0008 ;
+0000                       0009 ; Select whether the auxiliary port is the Support Card parallel port
+0000                       0010 ; or on channel 1 of a Multiport Serial card addressed at 10H.
+0000                       0011 PARALLELAUX:	EQU	1
+0000                       0012 SERIALAUX:	EQU	0
+0000                       0013 ;
+0000                       0014 ; Select whether the printer is connected to the Support card parallel
+0000                       0015 ; output port (standard) or channel 0 of a Multiport Serial card
+0000                       0016 ; addressed at 10H.
+0000                       0017 PARALLELPRN:	EQU	1
+0000                       0018 SERIALPRN:	EQU	0
+0000                       0019 ;
+0000                       0020 ; If the Multiport Serial was chosen for either the auxiliary or the
+0000                       0021 ; printer, select the baud rate here. Refer to Multiport Serial manual
+0000                       0022 ; page 11 to pick the correct value for a given baud rate.
+0000                       0023 PRNBAUD:EQU	7		; 1200 baud
+0000                       0024 AUXBAUD:EQU	0FH		; 19200 baud
+0000                       0025 ;
+0000                       0026 ; Select disk controller here.
+0000                       0027 SCP:		EQU	1
+0000                       0028 TARBELLSD:	EQU	0
+0000                       0029 TARBELLDD:	EQU	0
+0000                       0030 CROMEMCO4FDC:	EQU	0
+0000                       0031 CROMEMCO16FDC:	EQU	0
+0000                       0032 ;
+0000                       0033 ; Select if you want a special conversion version which can read/write
+0000                       0034 ; both the new Microsoft format and the old SCP format.
+0000                       0035 ; For a two drive system, drives A and B are the new Microsoft format,
+0000                       0036 ; and drives C and D are the old SCP format (where C is the same physical
+0000                       0037 ; drive as A, and D is the same drive as B).  CONVERT has no effect
+0000                       0038 ; on 5.25-inch drives.
+0000                       0039 CONVERT:EQU	1
+0000                       0040 ;
+0000                       0041 ; Select disk configuration:
+0000                       0042 LARGE:	EQU	1		; Large drives.
+0000                       0043 COMBIN:	EQU	0		; Two 8-inch and one 5.25-inch.
+0000                       0044 SMALL:	EQU	0		; Three 5.25-inch drives.
+0000                       0045 CUSTOM:	EQU	0		; User defined.
+0000                       0046 ;
+0000                       0047 ; If 8-inch drives are PerSci, select FASTSEEK here:
+0000                       0048 ; (Fastseek with Tarbell controllers doesn't work yet).
+0000                       0049 FASTSEEK:	EQU	1
+0000                       0050 ;
+0000                       0051 ; For double-density controllers, select double-sided operation of
+0000                       0052 ; 8-inch disks in double-density mode.
+0000                       0053 LARGEDS:	EQU	0
+0000                       0054 ;
+0000                       0055 ; For double-density controllers, select double-sided operation of
+0000                       0056 ; 5.25-inch disks in double-density mode.
+0000                       0057 SMALLDS:	EQU	0
+0000                       0058 ;
+0000                       0059 ; Use table below to select head step speed. Step times for 5" drives
+0000                       0060 ; are double that shown in the table. Times for Fast Seek mode (using
+0000                       0061 ; PerSci drives) is very small - 200-400 microseconds.
+0000                       0062 ;
+0000                       0063 ; Step value	1771	1793
+0000                       0064 ;
+0000                       0065 ;     0		 6ms	 3ms
+0000                       0066 ;     1		 6ms	 6ms
+0000                       0067 ;     2		10ms	10ms
+0000                       0068 ;     3		20ms	15ms
+0000                       0069 ;
+0000                       0070 STPSPD:	EQU	0
+0000                       0071 ;
+0000                       0072 ; ****** End of selections ********************************************
+0000                       0073 ;
+0000                       0074 BIOSSEG:EQU	40H		; I/O system segment.
+0000                       0075 BIOSLEN:EQU	2048		; Maximum length of I/O system.
+0000                       0076 DOSLEN:	EQU	8192		; Maximum length of MS-DOS.
+0000                       0077 QSIZE:	EQU	80		; Input queue size.
+0000                       0078 PBUFSIZ:EQU	128		; Size of print buffer
+0000                       0079 BASE:	EQU	0F0H		; CPU Support card base port number.
+0000                       0080 SIOBASE:EQU	10H		; Base port number of Multiport Serial card.
+0000                       0081 STAT:	EQU	BASE+7		; Serial I/O status port.
+0000                       0082 DATA:	EQU	BASE+6		; Serial I/O data port.
+0000                       0083 DAV:	EQU	2		; Data available bit.
+0000                       0084 TBMT:	EQU	1		; Transmitter buffer empty bit.
+0000                       0085 SERIAL:	EQU	SERIALPRN+SERIALAUX
+0000                       0086 STCDATA:EQU	BASE+4		; Ports for 9513 Timer chip.
+0000                       0087 STCCOM:	EQU	BASE+5
+0000                       0088 
+0000                       0089 	IF	SERIALAUX
+0000                       0090 AUXSTAT:EQU	SIOBASE+3
+0000                       0091 AUXDATA:EQU	SIOBASE+2
+0000                       0092 	ENDIF
+0000                       0093 
+0000                       0094 	IF	PARALLELAUX
+0000                       0095 AUXSTAT:EQU	BASE+13
+0000                       0096 AUXDATA:EQU	BASE+12
+0000                       0097 	ENDIF
+0000                       0098 
+0000                       0099 	IF	SERIALPRN
+0000                       0100 PRNSTAT:EQU	SIOBASE+1
+0000                       0101 PRNDATA:EQU	SIOBASE+0
+0000                       0102 	ENDIF
+0000                       0103 
+0000                       0104 	IF	PARALLELPRN
+0000                       0105 PRNSTAT:EQU	BASE+13
+0000                       0106 PRNDATA:EQU	BASE+12
+0000                       0107 	ENDIF
+0000                       0108 
+0000                       0109 	ORG	0
+0000                       0110 	PUT	100H
+0000                       0111 
+0000 E9 2B 00              0112 	JMP	INIT
+0003 E9 FB 01              0113 	JMP	STATUS
+0006 E9 8C 02              0114 	JMP	INP
+0009 E9 C6 03              0115 	JMP	OUTP
+000C E9 CE 03              0116 	JMP	PRINT
+000F E9 EE 03              0117 	JMP	AUXIN
+0012 E9 F4 03              0118 	JMP	AUXOUT
+0015 E9 68 04              0119 	JMP	READ
+0018 E9 7B 04              0120 	JMP	WRITE
+001B E9 F6 03              0121 	JMP	DSKCHG
+001E E9 8B 01              0122 	JMP	SETDATE
+0021 E9 48 01              0123 	JMP	SETTIME
+0024 E9 0D 01              0124 	JMP	GETTIME
+0027 E9 84 02              0125 	JMP	FLUSH
+002A E9 00 00              0126 	JMP	MAPDEV
+002D                       0127 MAPDEV:
+002D CB                    0128 	RET	L
+002E                       0129 
+002E                       0130 INIT:
+002E 33 ED                 0131 	XOR	BP,BP		; Set up stack just below I/O system.
+0030 8E D5                 0132 	MOV	SS,BP
+0032 BC 00 04              0133 	MOV	SP,BIOSSEG*16
+0035                       0134 
+0035                       0135 	IF	INTINP-1
+0035                       0136 	MOV	AL,0FFH		; Mask all interrupts.
+0035                       0137 	OUTB	BASE+3
+0035                       0138 	ENDIF
+0035                       0139 
+0035                       0140 	IF	INTINP
+0035 FA                    0141 	DI			; Set up keyboard interrupt vector.
+0036 C7 46 64 C3 01        0142 	MOV	[BP+64H],KBINT
+003B 8C 4E 66              0143 	MOV	[BP+66H],CS
+003E FB                    0144 	EI
+003F                       0145 	ENDIF
+003F                       0146 
+003F C7 86 E0 00 AD 03     0147 	MOV	[BP+4*38H],PRNFCB
+0045 8C 8E E2 00           0148 	MOV	[BP+4*38H+2],CS
+0049 0E                    0149 	PUSH	CS
+004A 1F                    0150 	POP	DS
+004B                       0151 ;
+004B                       0152 ; Initialize time-of-day clock.
+004B                       0153 ;
+004B BE DA 00              0154 	MOV	SI,STCTAB
+004E B9 04 00              0155 	MOV	CX,4		;Initialize 4 registers
+0051 FC                    0156 	UP
+0052                       0157 INITSTC:
+0052 AC                    0158 	LODB
+0053 E6 F5                 0159 	OUT	STCCOM		;Select register to initialize
+0055 AC                    0160 	LODB
+0056 E6 F4                 0161 	OUT	STCDATA
+0058 AC                    0162 	LODB
+0059 E6 F4                 0163 	OUT	STCDATA
+005B E2 F5                 0164 	LOOP	INITSTC
+005D                       0165 
+005D                       0166 	IF	SERIAL
+005D                       0167 	MOV	CX,4
+005D                       0168 SERINIT:
+005D                       0169 	LODB
+005D                       0170 	OUT	SIOBASE+1
+005D                       0171 	OUT	SIOBASE+3
+005D                       0172 	LOOP	SERINIT
+005D                       0173 	LODB			;Baud rate for channel 0
+005D                       0174 	OUT	SIOBASE+8
+005D                       0175 	LODB			;Baud rate for channel 1
+005D                       0176 	OUT	SIOBASE+9
+005D                       0177 	ENDIF
+005D                       0178 ;
+005D                       0179 ; Move MS-DOS down to the first segment just above the I/O system.
+005D                       0180 ;
+005D BE 00 08              0181 	MOV	SI,BIOSLEN	; Source points to where MS-DOS currently is.
+0060 B8 A8 00              0182 	MOV	AX,DOSSEG	; Destination is beginning of DOSSEG.
+0063 8E C0                 0183 	MOV	ES,AX
+0065 2B FF                 0184 	SUB	DI,DI
+0067 B9 00 10              0185 	MOV	CX,DOSLEN/2	; CX is number of words to move.
+006A F3                    0186 	REP
+006B A5                    0187 	MOVSW
+006C                       0188 
+006C BE 40 06              0189 	MOV	SI,INITTAB
+006F BA 01 00              0190 	MOV	DX,1		; Do auto memory scan.
+0072 9A 00 00 A8 00        0191 	CALL	0,DOSSEG
+0077                       0192 ;
+0077                       0193 ; Change disk read and write vectors (INT 37 and INT 38) to go to
+0077                       0194 ; DIRECTREAD and DIRECTWRITE rather than READ and WRITE.
+0077                       0195 ;
+0077 2B ED                 0196 	SUB	BP,BP
+0079 C7 86 94 00 C4 04     0197 	MOV	W,[BP+37*4],DIRECTREAD
+007F C7 86 98 00 D0 04     0198 	MOV	W,[BP+38*4],DIRECTWRITE
+0085                       0199 
+0085 BA 00 01              0200 	MOV	DX,100H
+0088 B4 1A                 0201 	MOV	AH,26		;Set DMA address
+008A CD 21                 0202 	INT	33
+008C 8B 0E 06 00           0203 	MOV	CX,[6]		;Get size of segment
+0090 8C DB                 0204 	MOV	BX,DS		;Save segment for later
+0092                       0205 ;
+0092                       0206 ; DS must be set to CS so we can point to the FCB.
+0092                       0207 ;
+0092 8C C8                 0208 	MOV	AX,CS
+0094 8E D8                 0209 	MOV	DS,AX
+0096 BA 0F 01              0210 	MOV	DX,FCB		;File Control Block for COMMAND.COM
+0099 B4 0F                 0211 	MOV	AH,15
+009B CD 21                 0212 	INT	33		;Open COMMAND.COM
+009D 0A C0                 0213 	OR	AL,AL
+009F 75 2F                 0214 	JNZ	COMERR		;Error if file not found
+00A1 33 C0                 0215 	XOR	AX,AX
+00A3 A3 30 01              0216 	MOV	[FCB+33],AX	; Set 4-byte Random Record field to
+00A6 A3 32 01              0217 	MOV	[FCB+35],AX	;  beginning of file.
+00A9 40                    0218 	INC	AX
+00AA A3 1D 01              0219 	MOV	[FCB+14],AX	;Set record length field
+00AD B4 27                 0220 	MOV	AH,39		;Block read (CX already set)
+00AF CD 21                 0221 	INT	33
+00B1 E3 1D                 0222 	JCXZ	COMERR		;Error if no records read
+00B3 A8 01                 0223 	TEST	AL,1
+00B5 74 19                 0224 	JZ	COMERR		;Error if not end-of-file
+00B7                       0225 ;
+00B7                       0226 ; Make all segment registers the same.
+00B7                       0227 ;
+00B7 8E DB                 0228 	MOV	DS,BX
+00B9 8E C3                 0229 	MOV	ES,BX
+00BB 8E D3                 0230 	MOV	SS,BX
+00BD BC 5C 00              0231 	MOV	SP,5CH		;Set stack to standard value
+00C0 33 C0                 0232 	XOR	AX,AX
+00C2 50                    0233 	PUSH	AX		;Put zero on top of stack for return
+00C3 BA 80 00              0234 	MOV	DX,80H
+00C6 B4 1A                 0235 	MOV	AH,26
+00C8 CD 21                 0236 	INT	33		;Set default transfer address (DS:0080)
+00CA 53                    0237 	PUSH	BX		;Put segment on stack
+00CB B8 00 01              0238 	MOV	AX,100H
+00CE 50                    0239 	PUSH	AX		;Put address to execute within segment on stack
+00CF CB                    0240 	RET	L		;Jump to COMMAND
+00D0                       0241 
+00D0                       0242 COMERR:
+00D0 BA E6 00              0243 	MOV	DX,BADCOM
+00D3 B4 09                 0244 	MOV	AH,9		;Print string
+00D5 CD 21                 0245 	INT	33
+00D7 FB                    0246 	EI
+00D8 EB FE                 0247 STALL:	JP	STALL
+00DA                       0248 
+00DA 17                    0249 STCTAB:	DB	17H		;Select master mode register
+00DB F3 84                 0250 	DW	84F3H		;Enable time-of-day
+00DD 01                    0251 	DB	1		;Counter 1 mode register
+00DE 38 01                 0252 	DW	0138H
+00E0 02                    0253 	DB	2
+00E1 38 00                 0254 	DW	0038H
+00E3 03                    0255 	DB	3
+00E4 08 00                 0256 	DW	0008H		;Set counter 3 to count days
+00E6                       0257 
+00E6                       0258 	IF	SERIAL
+00E6                       0259 	DB	0B7H, 77H, 4EH, 37H, PRNBAUD, AUXBAUD
+00E6                       0260 	ENDIF
+00E6                       0261 
+00E6 0D 0A 45 72 72 6F 72  0262 BADCOM:	DB	13,10,"Error in loading Command Interpreter",13,10,"$"
+     20 69 6E 20 6C 6F 61 
+     64 69 6E 67 20 43 6F 
+     6D 6D 61 6E 64 20 49 
+     6E 74 65 72 70 72 65 
+     74 65 72 0D 0A 24    
+010F 01 43 4F 4D 4D 41 4E  0263 FCB:	DB	1,"COMMAND COM"
+     44 20 43 4F 4D       
+011B                       0264 	DS	25
+0134                       0265 ;
+0134                       0266 ; ************ Time and Date ************
+0134                       0267 ;
+0134                       0268 GETTIME:
+0134 B0 A7                 0269 	MOV	AL,0A7H		;Save counters 1,2,3
+0136 E6 F5                 0270 	OUT	STCCOM
+0138 B0 E0                 0271 	MOV	AL,0E0H		;Enable data pointer sequencing
+013A E6 F5                 0272 	OUT	STCCOM
+013C B0 19                 0273 	MOV	AL,19H		;Select hold 1 / hold cycle
+013E E6 F5                 0274 	OUT	STCCOM
+0140 E8 0F 00              0275 	CALL	STCTIME		;Get seconds & 1/100's
+0143 92                    0276 	XCHG	AX,DX
+0144 E8 0B 00              0277 	CALL	STCTIME		;Get hours & minutes
+0147 91                    0278 	XCHG	AX,CX
+0148 E4 F4                 0279 	IN	STCDATA
+014A 8A E0                 0280 	MOV	AH,AL
+014C E4 F4                 0281 	IN	STCDATA
+014E 86 C4                 0282 	XCHG	AL,AH		;Count of days
+0150 EB 6A                 0283 	JP	POINTSTAT
+0152                       0284 
+0152                       0285 STCTIME:
+0152 E8 02 00              0286 	CALL	STCBYTE
+0155 8A CC                 0287 	MOV	CL,AH
+0157                       0288 STCBYTE:
+0157 E4 F4                 0289 	IN	STCDATA
+0159 8A E0                 0290 	MOV	AH,AL
+015B D0 EC                 0291 	SHR	AH
+015D D0 EC                 0292 	SHR	AH
+015F D0 EC                 0293 	SHR	AH
+0161 D0 EC                 0294 	SHR	AH
+0163 24 0F                 0295 	AND	AL,0FH		;Unpack BCD digits
+0165 D5 0A                 0296 	AAD			;Convert to binary
+0167 8A E0                 0297 	MOV	AH,AL
+0169 8A C1                 0298 	MOV	AL,CL
+016B C3                    0299 	RET
+016C                       0300 
+016C                       0301 SETTIME:
+016C 51                    0302 	PUSH	CX
+016D 52                    0303 	PUSH	DX
+016E E8 16 00              0304 	CALL	LOAD0		;Put 0 into load registers to condition timer
+0171 B0 43                 0305 	MOV	AL,43H		;Load counters 1 & 2
+0173 E6 F5                 0306 	OUT	STCCOM
+0175 5A                    0307 	POP	DX
+0176 59                    0308 	POP	CX
+0177 E8 11 00              0309 	CALL	LOAD
+017A B0 43                 0310 	MOV	AL,43H
+017C E6 F5                 0311 	OUT	STCCOM		;Load counters 1&2
+017E E8 06 00              0312 	CALL	LOAD0
+0181 B0 27                 0313 	MOV	AL,27H		;Arm counters 1,2,3
+0183 E6 F5                 0314 	OUT	STCCOM
+0185 EB 35                 0315 	JP	POINTSTAT
+0187                       0316 
+0187                       0317 LOAD0:
+0187 33 C9                 0318 	XOR	CX,CX
+0189 8B D1                 0319 	MOV	DX,CX
+018B                       0320 LOAD:
+018B B0 09                 0321 	MOV	AL,09		;Counter 1 load register
+018D E8 04 00              0322 	CALL	OUTDX
+0190 B0 0A                 0323 	MOV	AL,0AH		;Counter 2 load register
+0192 8B D1                 0324 	MOV	DX,CX
+0194                       0325 OUTDX:
+0194 E6 F5                 0326 	OUT	STCCOM		;Select a load register
+0196 8A C2                 0327 	MOV	AL,DL
+0198 E8 02 00              0328 	CALL	OUTBCD
+019B 8A C6                 0329 	MOV	AL,DH
+019D                       0330 OUTBCD:
+019D D4 0A                 0331 	AAM			;Convert binary to unpacked BCD
+019F D0 E4                 0332 	SHL	AH
+01A1 D0 E4                 0333 	SHL	AH
+01A3 D0 E4                 0334 	SHL	AH
+01A5 D0 E4                 0335 	SHL	AH
+01A7 0A C4                 0336 	OR	AL,AH		;Packed BCD
+01A9 E6 F4                 0337 	OUT	STCDATA
+01AB C3                    0338 	RET
+01AC                       0339 
+01AC                       0340 SETDATE:
+01AC 92                    0341 	XCHG	AX,DX		;Put date in DX
+01AD B0 0B                 0342 	MOV	AL,0BH		;Select Counter 3 load register
+01AF E6 F5                 0343 	OUT	STCCOM
+01B1 92                    0344 	XCHG	AX,DX
+01B2 E6 F4                 0345 	OUT	STCDATA
+01B4 8A C4                 0346 	MOV	AL,AH
+01B6 E6 F4                 0347 	OUT	STCDATA
+01B8 B0 44                 0348 	MOV	AL,44H		;Load counter 3
+01BA E6 F5                 0349 	OUT	STCCOM
+01BC                       0350 POINTSTAT:
+01BC 50                    0351 	PUSH	AX
+01BD B0 1F                 0352 	MOV	AL,1FH		;Point to status register
+01BF E6 F5                 0353 	OUT	STCCOM		;   so power-off glitches won't hurt
+01C1 58                    0354 	POP	AX
+01C2 CB                    0355 	RET	L
+01C3                       0356 ;
+01C3                       0357 ; ************ CONSOLE INPUT ************
+01C3                       0358 ;
+01C3                       0359 
+01C3                       0360 	IF	INTINP-1	; Non-interrupt driven input.
+01C3                       0361 STATUS:
+01C3                       0362 	IN	STAT
+01C3                       0363 	AND	AL,DAV
+01C3                       0364 	JZ	NOTHING		; Jump if nothing there.
+01C3                       0365 	PUSHF			; Save Z flag.
+01C3                       0366 	INB	DATA
+01C3                       0367 	AND	AL,7FH
+01C3                       0368 	SEG	CS
+01C3                       0369 	MOV	[QUEUE],AL	; Put new character in buffer.
+01C3                       0370 	POPF			; Return with Z flag clear.
+01C3                       0371 	RET	L
+01C3                       0372 NOTHING:
+01C3                       0373 	SEG	CS
+01C3                       0374 	MOV	AL,[QUEUE]	; See if there's anything in the buffer.
+01C3                       0375 	NOT	AL		; Set up the Z flag.
+01C3                       0376 	TEST	AL,80H
+01C3                       0377 	PUSHF
+01C3                       0378 	NOT	AL
+01C3                       0379 	POPF
+01C3                       0380 	RET	L
+01C3                       0381 
+01C3                       0382 INP:
+01C3                       0383 	MOV	AL,-1
+01C3                       0384 	SEG	CS
+01C3                       0385 	XCHG	AL,[QUEUE]	; Remove the character from the buffer.
+01C3                       0386 	AND	AL,AL
+01C3                       0387 	JNS	INRET		; Return if we have a character.
+01C3                       0388 INLOOP:
+01C3                       0389 	IN	STAT		; Wait till a character is available.
+01C3                       0390 	AND	AL,DAV
+01C3                       0391 	JZ	INLOOP
+01C3                       0392 	IN	DATA
+01C3                       0393 	AND	AL,7FH
+01C3                       0394 INRET:
+01C3                       0395 FLUSH:
+01C3                       0396 	RET	L
+01C3                       0397 
+01C3                       0398 QUEUE:	DB	-1		; For storing characters from STATUS to INP.
+01C3                       0399 	ENDIF
+01C3                       0400 
+01C3                       0401 	IF	INTINP		; Interrupt-driven input.
+01C3                       0402 ;
+01C3                       0403 ; Console keyboard interrupt handler.
+01C3                       0404 ;
+01C3                       0405 KBINT:
+01C3 50                    0406 	PUSH	AX
+01C4 56                    0407 	PUSH	SI
+01C5 B0 20                 0408 	MOV	AL,20H		;End of Interrupt command
+01C7 E6 F2                 0409 	OUT	BASE+2		;Send to slave
+01C9 E4 F6                 0410 	IN	DATA		;Get the character
+01CB 24 7F                 0411 	AND	AL,7FH
+01CD 3C 03                 0412 	CMP	AL,"C"-"@"
+01CF 74 08                 0413 	JZ	FLSH
+01D1 3C 13                 0414 	CMP	AL,"S"-"@"
+01D3 74 04                 0415 	JZ	FLSH
+01D5 3C 06                 0416 	CMP	AL,"F"-"@"
+01D7 75 05                 0417 	JNZ	SAVKY
+01D9                       0418 FLSH:
+01D9 9A 27 00 40 00        0419 	CALL	13*3,BIOSSEG	; Call I/O system keyboard buffer flush.
+01DE                       0420 SAVKY:
+01DE 2E                    0421 	SEG	CS
+01DF 8B 36 D7 02           0422 	MOV	SI,[REAR]	;Pointer to rear of queue
+01E3 E8 D9 00              0423 	CALL	INCQ
+01E6 2E                    0424 	SEG	CS
+01E7 3B 36 D5 02           0425 	CMP	SI,[FRONT]	;Any room in queue?
+01EB 74 0B                 0426 	JZ	QFULL
+01ED 2E                    0427 	SEG	CS
+01EE 88 04                 0428 	MOV	[SI],AL		;Put character in queue
+01F0 2E                    0429 	SEG	CS
+01F1 89 36 D7 02           0430 	MOV	[REAR],SI	;Save pointer
+01F5                       0431 LEAVINT:
+01F5 5E                    0432 	POP	SI
+01F6 58                    0433 	POP	AX
+01F7 CF                    0434 	IRET
+01F8                       0435 QFULL:
+01F8 B0 07                 0436 	MOV	AL,7		; BELL character.
+01FA 9A 09 00 40 00        0437 	CALL	3*3,BIOSSEG	; Call I/O system console output function.
+01FF EB F4                 0438 	JMPS	LEAVINT
+0201                       0439 
+0201                       0440 STATUS:
+0201 56                    0441 	PUSH	SI
+0202                       0442 ;See if printer ready
+0202 E4 FD                 0443 	IN	PRNSTAT
+0204 24 01                 0444 	AND	AL,TBMT
+0206 74 76                 0445 	JZ	NOPRN
+0208 2E                    0446 	SEG	CS
+0209 8B 36 29 03           0447 	MOV	SI,[PFRONT]
+020D 2E                    0448 	SEG	CS
+020E 3B 36 2B 03           0449 	CMP	SI,[PREAR]	;Anything in print queue?
+0212 75 5E                 0450 	JNZ	SENDPRN
+0214 2E                    0451 	SEG	CS
+0215 82 3E AD 03 FF        0452 	CMP	B,[PRNFCB],-1	;Print spooling in progress?
+021A 74 62                 0453 	JZ	NOPRN		;If not, nothing to print
+021C                       0454 ;Print spooling in progress. Get next buffer
+021C 1E                    0455 	PUSH	DS
+021D 0E                    0456 	PUSH	CS
+021E 1F                    0457 	POP	DS
+021F 50                    0458 	PUSH	AX
+0220 51                    0459 	PUSH	CX
+0221 52                    0460 	PUSH	DX
+0222 FF 36 81 1D           0461 	PUSH	[STKSAV]
+0226 FF 36 83 1D           0462 	PUSH	[STKSAV+2]
+022A FF 36 34 1C           0463 	PUSH	[DMAADD]
+022E FF 36 36 1C           0464 	PUSH	[DMAADD+2]
+0232 BA 2D 03              0465 	MOV	DX,PQUEUE
+0235 B4 1A                 0466 	MOV	AH,26		;Set DMA address
+0237 CD 21                 0467 	INT	33
+0239 BA AD 03              0468 	MOV	DX,PRNFCB
+023C B9 80 00              0469 	MOV	CX,PBUFSIZ
+023F B4 27                 0470 	MOV	AH,39		;Read buffer
+0241 CD 21                 0471 	INT	33
+0243 0A C0                 0472 	OR	AL,AL
+0245 74 05                 0473 	JZ	NOTEOF
+0247 C6 06 AD 03 FF        0474 	MOV	B,[PRNFCB],-1	;Turn off print spooling at EOF
+024C                       0475 NOTEOF:
+024C 8F 06 36 1C           0476 	POP	[DMAADD+2]
+0250 8F 06 34 1C           0477 	POP	[DMAADD]
+0254 8F 06 83 1D           0478 	POP	[STKSAV+2]
+0258 8F 06 81 1D           0479 	POP	[STKSAV]
+025C 8B F1                 0480 	MOV	SI,CX
+025E 5A                    0481 	POP	DX
+025F 59                    0482 	POP	CX
+0260 58                    0483 	POP	AX
+0261 1F                    0484 	POP	DS
+0262 0B F6                 0485 	OR	SI,SI
+0264 74 18                 0486 	JZ	NOPRN
+0266 81 C6 2C 03           0487 	ADD	SI,PQUEUE-1
+026A 2E                    0488 	SEG	CS
+026B 89 36 2B 03           0489 	MOV	[PREAR],SI
+026F BE AC 03              0490 	MOV	SI,ENDPQ-1
+0272                       0491 SENDPRN:
+0272 E8 55 00              0492 	CALL	INCPQ
+0275 2E                    0493 	SEG	CS
+0276 89 36 29 03           0494 	MOV	[PFRONT],SI
+027A 2E                    0495 	SEG	CS
+027B AC                    0496 	LODSB			;Get character to print
+027C E6 FC                 0497 	OUT	PRNDATA
+027E                       0498 NOPRN:
+027E FA                    0499 	DI			; Disable interrupts while checking queue.
+027F 2E                    0500 	SEG	CS
+0280 8B 36 D5 02           0501 	MOV	SI,[FRONT]
+0284 2E                    0502 	SEG	CS
+0285 3B 36 D7 02           0503 	CMP	SI,[REAR]	; Anything in queue?
+0289 74 07                 0504 	JZ	NOCHR		; Jump if nothing in queue.
+028B E8 31 00              0505 	CALL	INCQ
+028E 2E                    0506 	SEG	CS
+028F AC                    0507 	LODSB			;Get character (if there is one)
+0290 0B F6                 0508 	OR	SI,SI		;Reset zero flag
+0292                       0509 NOCHR:
+0292 FB                    0510 	EI
+0293 5E                    0511 	POP	SI
+0294 CB                    0512 	RET	L		;Zero clear if we have a character
+0295                       0513 
+0295                       0514 INP:
+0295 9A 01 02 40 00        0515 	CALL	STATUS,BIOSSEG	; Get I/O system console input status.
+029A 74 F9                 0516 	JZ	INP
+029C 56                    0517 	PUSH	SI
+029D FA                    0518 	DI			; Disable interrupts while changing queue pointers.
+029E 2E                    0519 	SEG	CS
+029F 8B 36 D5 02           0520 	MOV	SI,[FRONT]
+02A3 E8 19 00              0521 	CALL	INCQ		; Permanently remove char from queue
+02A6 2E                    0522 	SEG	CS
+02A7 89 36 D5 02           0523 	MOV	[FRONT],SI
+02AB FB                    0524 	EI
+02AC 5E                    0525 	POP	SI
+02AD CB                    0526 	RET	L
+02AE                       0527 
+02AE                       0528 FLUSH:
+02AE FA                    0529 	DI
+02AF 2E                    0530 	SEG	CS
+02B0 C7 06 D7 02 D9 02     0531 	MOV	[REAR],QUEUE
+02B6 2E                    0532 	SEG	CS
+02B7 C7 06 D5 02 D9 02     0533 	MOV	[FRONT],QUEUE
+02BD FB                    0534 	EI
+02BE CB                    0535 	RET	L
+02BF                       0536 
+02BF                       0537 INCQ:
+02BF 46                    0538 	INC	SI
+02C0 81 FE 29 03           0539 	CMP	SI,ENDQ		;Exceeded length of queue?
+02C4 72 03                 0540 	JB	RET
+02C6 BE D9 02              0541 	MOV	SI,QUEUE
+02C9 C3                    0542 	RET
+02CA                       0543 
+02CA                       0544 INCPQ:
+02CA 46                    0545 	INC	SI
+02CB 81 FE AD 03           0546 	CMP	SI,ENDPQ	;Exceeded length of queue?
+02CF 72 F8                 0547 	JB	RET
+02D1 BE 2D 03              0548 	MOV	SI,PQUEUE
+02D4 C3                    0549 	RET
+02D5                       0550 
+02D5 D9 02                 0551 FRONT:	DW	QUEUE
+02D7 D9 02                 0552 REAR:	DW	QUEUE
+02D9                       0553 QUEUE:	DS	QSIZE
+0329                       0554 ENDQ:	EQU	$
+0329 2D 03                 0555 PFRONT:	DW	PQUEUE
+032B 2D 03                 0556 PREAR:	DW	PQUEUE
+032D                       0557 PQUEUE:	DS	PBUFSIZ
+03AD                       0558 ENDPQ:	EQU	$
+03AD FF                    0559 PRNFCB:	DB	-1
+03AE                       0560 	DS	36
+03D2                       0561 	ENDIF
+03D2                       0562 
+03D2                       0563 ;
+03D2                       0564 ; ************ Console and Printer Output ************
+03D2                       0565 ;
+03D2                       0566 OUTP:
+03D2 50                    0567 	PUSH	AX
+03D3                       0568 OUTLP:
+03D3 E4 F7                 0569 	IN	STAT
+03D5 24 01                 0570 	AND	AL,TBMT
+03D7 74 FA                 0571 	JZ	OUTLP
+03D9 58                    0572 	POP	AX
+03DA E6 F6                 0573 	OUT	DATA
+03DC CB                    0574 	RET	L
+03DD                       0575 
+03DD                       0576 PRINT:
+03DD 56                    0577 	PUSH	SI
+03DE 2E                    0578 	SEG	CS
+03DF 8B 36 2B 03           0579 	MOV	SI,[PREAR]
+03E3 E8 E4 FE              0580 	CALL	INCPQ
+03E6                       0581 PRINLP:
+03E6 2E                    0582 	SEG	CS
+03E7 3B 36 29 03           0583 	CMP	SI,[PFRONT]
+03EB 75 09                 0584 	JNZ	PRNCHR
+03ED                       0585 ;Print queue is full
+03ED 50                    0586 	PUSH	AX
+03EE 9A 01 02 40 00        0587 	CALL	STATUS,BIOSSEG	;Poll and maybe print something
+03F3 58                    0588 	POP	AX
+03F4 EB F0                 0589 	JMPS	PRINLP
+03F6                       0590 PRNCHR:
+03F6 2E                    0591 	SEG	CS
+03F7 89 36 2B 03           0592 	MOV	[PREAR],SI
+03FB 2E                    0593 	SEG	CS
+03FC 88 04                 0594 	MOV	[SI],AL
+03FE 5E                    0595 	POP	SI
+03FF CB                    0596 	RET	L
+0400                       0597 ;
+0400                       0598 ; ************ Auxiliary I/O ************
+0400                       0599 ;
+0400                       0600 AUXIN:
+0400 E4 FD                 0601 	IN	AUXSTAT
+0402 24 02                 0602 	AND	AL,DAV
+0404 74 FA                 0603 	JZ	AUXIN
+0406 E4 FC                 0604 	IN	AUXDATA
+0408 CB                    0605 	RET	L
+0409                       0606 
+0409                       0607 AUXOUT:
+0409 50                    0608 	PUSH	AX
+040A                       0609 AUXLP:
+040A E4 FD                 0610 	IN	AUXSTAT
+040C 24 01                 0611 	AND	AL,TBMT
+040E 74 FA                 0612 	JZ	AUXLP
+0410 58                    0613 	POP	AX
+0411 E6 FC                 0614 	OUT	AUXDATA
+0413 CB                    0615 	RET	L
+0414                       0616 ;
+0414                       0617 ; ************ 1771/1793-type controller disk I/O ************
+0414                       0618 ;
+0414                       0619 TARBELL:EQU	TARBELLSD+TARBELLDD
+0414                       0620 CROMEMCO:EQU	CROMEMCO4FDC+CROMEMCO16FDC
+0414                       0621 
+0414                       0622 WD1791:	EQU	SCP+TARBELLDD+CROMEMCO16FDC
+0414                       0623 WD1771:	EQU	TARBELLSD+CROMEMCO4FDC
+0414                       0624 
+0414                       0625 	IF	WD1791
+0414                       0626 READCOM:EQU	80H
+0414                       0627 WRITECOM:EQU	0A0H
+0414                       0628 	ENDIF
+0414                       0629 
+0414                       0630 	IF	WD1771
+0414                       0631 READCOM:EQU	88H
+0414                       0632 WRITECOM:EQU	0A8H
+0414                       0633 	ENDIF
+0414                       0634 
+0414                       0635 	IF	SCP
+0414                       0636 SMALLBIT:EQU	10H
+0414                       0637 BACKBIT:EQU	04H
+0414                       0638 DDENBIT:EQU	08H
+0414                       0639 DONEBIT:EQU	01H
+0414                       0640 DISK:	EQU	0E0H
+0414                       0641 	ENDIF
+0414                       0642 
+0414                       0643 	IF	TARBELL
+0414                       0644 BACKBIT:EQU	40H
+0414                       0645 DDENBIT:EQU	08H
+0414                       0646 DONEBIT:EQU	80H
+0414                       0647 DISK:	EQU	78H
+0414                       0648 	ENDIF
+0414                       0649 
+0414                       0650 	IF	CROMEMCO
+0414                       0651 SMALLBIT:EQU	10H
+0414                       0652 BACKBIT:EQU	0FDH		; Send this to port 4 to select back.
+0414                       0653 DDENBIT:EQU	40H
+0414                       0654 DONEBIT:EQU	01H
+0414                       0655 DISK:	EQU	30H
+0414                       0656 	ENDIF
+0414                       0657 
+0414                       0658 	IF	SMALLDS-1
+0414                       0659 SMALLDDSECT:	EQU	8
+0414                       0660 	ENDIF
+0414                       0661 
+0414                       0662 	IF	SMALLDS
+0414                       0663 SMALLDDSECT:	EQU	16
+0414                       0664 	ENDIF
+0414                       0665 
+0414                       0666 	IF	LARGEDS-1
+0414                       0667 LARGEDDSECT:	EQU	8
+0414                       0668 	ENDIF
+0414                       0669 
+0414                       0670 	IF	LARGEDS
+0414                       0671 LARGEDDSECT:	EQU	16
+0414                       0672 	ENDIF
+0414                       0673 ;
+0414                       0674 ; Disk change function.
+0414                       0675 ; On entry:
+0414                       0676 ;	AL = disk drive number.
+0414                       0677 ; On exit:
+0414                       0678 ;	AH = -1 (FF hex) if disk is changed.
+0414                       0679 ;	AH = 0 if don't know.
+0414                       0680 ;	AH = 1 if not changed.
+0414                       0681 ;
+0414                       0682 ;	CF clear if no disk error.
+0414                       0683 ;	AL = disk I/O driver number.
+0414                       0684 ;
+0414                       0685 ;	CF set if disk error.
+0414                       0686 ;	AL = disk error code (see disk read below).
+0414                       0687 ;
+0414                       0688 	IF	WD1771
+0414                       0689 DSKCHG:
+0414                       0690 	MOV	AH,0		; AH = 0 in case we don't know.
+0414                       0691 	SEG	CS
+0414                       0692 	CMP	AL,[CURDRV]
+0414                       0693 	JNZ	RETL
+0414                       0694 	PUSH	AX		; Save drive number.
+0414                       0695 
+0414                       0696 	IF	CROMEMCO
+0414                       0697 	INB	DISK+4
+0414                       0698 	ENDIF
+0414                       0699 
+0414                       0700 	IF	TARBELL
+0414                       0701 	INB	DISK
+0414                       0702 	ENDIF
+0414                       0703 
+0414                       0704 	AND	AL,20H		; Look at head load bit
+0414                       0705 	POP	AX
+0414                       0706 	JZ	RETL
+0414                       0707 	MOV	AH,1		; AH = 1, disk not changed.
+0414                       0708 RETL:
+0414                       0709 	CLC			; No disk error.
+0414                       0710 	RET	L
+0414                       0711 	ENDIF			; End of 1771 DSKCHG.
+0414                       0712 
+0414                       0713 	IF	WD1791
+0414                       0714 DSKCHG:
+0414 B4 00                 0715 	MOV	AH,0		; AH = 0 in case we don't know.
+0416 2E                    0716 	SEG	CS
+0417 3A 06 2E 06           0717 	CMP	AL,[CURDRV]
+041B 75 11                 0718 	JNZ	DENSCHK		; Check density if not same drive.
+041D 50                    0719 	PUSH	AX
+041E                       0720 
+041E                       0721 	IF	SCP+CROMEMCO
+041E E4 E4                 0722 	INB	DISK+4
+0420                       0723 	ENDIF
+0420                       0724 
+0420                       0725 	IF	TARBELL
+0420                       0726 	INB	DISK
+0420                       0727 	ENDIF
+0420                       0728 
+0420 24 20                 0729 	AND	AL,20H		; Look at head load bit
+0422 58                    0730 	POP	AX
+0423 74 09                 0731 	JZ	DENSCHK		; Check density if head not loaded.
+0425 B4 01                 0732 	MOV	AH,1		; AH = 1, disk not changed.
+0427 BB 62 04              0733 	MOV	BX,PREVDENS
+042A 2E                    0734 	SEG	CS
+042B D7                    0735 	XLAT			; Get previous density
+042C F8                    0736 	CLC			; No disk error.
+042D CB                    0737 	RET	L
+042E                       0738 DENSCHK:
+042E E8 38 00              0739 	CALL	CHKNEW		; Unload head if selecting new drive.
+0431 98                    0740 	CBW
+0432 96                    0741 	XCHG	AX,SI
+0433 81 C6 62 04           0742 	ADD	SI,PREVDENS
+0437 B9 04 00              0743 	MOV	CX,4		; Try each density twice
+043A B4 00                 0744 	MOV	AH,0		; Disk may not have been changed.
+043C                       0745 CHKDENS:
+043C 2E                    0746 	SEG	CS
+043D 8A 04                 0747 	MOV	AL,[SI]		; Get previous disk I/O driver number.
+043F BB 2F 06              0748 	MOV	BX,DRVTAB
+0442 2E                    0749 	SEG	CS
+0443 D7                    0750 	XLAT			; Get drive select byte for previous density
+0444                       0751 
+0444                       0752 	IF	CROMEMCO16FDC
+0444                       0753 	CALL	MOTOR		; Wait for motor to come up to speed.
+0444                       0754 	ENDIF
+0444                       0755 
+0444 E6 E4                 0756 	OUT	DISK+4		; Select disk
+0446 B0 C4                 0757 	MOV	AL,0C4H		; READ ADDRESS command
+0448 E8 D4 01              0758 	CALL	DCOM
+044B 24 98                 0759 	AND	AL,98H
+044D E4 E3                 0760 	IN	DISK+3		; Eat last byte to reset DRQ
+044F 74 0D                 0761 	JZ	HAVDENS		; Jump if no error in reading address.
+0451 F6 D4                 0762 	NOT	AH		; AH = -1 (disk changed) if new density works.
+0453 2E                    0763 	SEG	CS
+0454 80 34 01              0764 	XOR	B,[SI],1	; Try other density
+0457 E2 E3                 0765 	LOOP	CHKDENS
+0459 B8 02 00              0766 	MOV	AX,2		; Couldn't read disk at all, AH = 0 for don't 
+045C F9                    0767 	STC			;  know if disk changed, AL = error code 2 -
+045D CB                    0768 	RET	L		;  disk not ready, carry set to indicate error.
+045E                       0769 
+045E                       0770 HAVDENS:
+045E 2E                    0771 	SEG	CS
+045F AC                    0772 	LODSB			; AL = disk I/O driver number.
+0460 F8                    0773 	CLC			; No disk error.
+0461 CB                    0774 	RET	L
+0462                       0775 
+0462 01 03 05 07 09 0B 0D  0776 PREVDENS:DB	1,3,5,7,9,11,13	; Table of previous disk I/O driver numbers.
+0469                       0777 	ENDIF			; End of 1793 DSKCHG function.
+0469                       0778 
+0469                       0779 CHKNEW:
+0469 8A E0                 0780 	MOV	AH,AL		; Save disk drive number in AH.
+046B 2E                    0781 	SEG	CS		; AL = previous disk drive number,
+046C 86 06 2E 06           0782 	XCHG	AL,[CURDRV]	;  make new drive current.
+0470 3A C4                 0783 	CMP	AL,AH		; Changing drives?
+0472 74 0B                 0784 	JZ	RET
+0474                       0785 ;
+0474                       0786 ; If changing drives, unload head so the head load delay one-shot will
+0474                       0787 ; fire again. Do it by seeking to the same track with the H bit reset.
+0474                       0788 ;
+0474 E4 E1                 0789 	IN	DISK+1		; Get current track number
+0476 E6 E3                 0790 	OUT	DISK+3		; Make it the track to seek to
+0478 B0 10                 0791 	MOV	AL,10H		; Seek and unload head
+047A E8 A2 01              0792 	CALL	DCOM
+047D 8A C4                 0793 	MOV	AL,AH		; Restore current drive number
+047F C3                    0794 	RET
+0480                       0795 
+0480                       0796 	IF	CROMEMCO16FDC
+0480                       0797 MOTOR:
+0480                       0798 	PUSH	AX
+0480                       0799 	MOV	AH,AL
+0480                       0800 	IN	DISK+4		; See if the motor is on.
+0480                       0801 	TEST	AL,08H
+0480                       0802 	MOV	AL,AH
+0480                       0803 	OUTB	DISK+4		; Select drive & start motor.
+0480                       0804 	JNZ	MOTORSON	; No delay if motors already on.
+0480                       0805 	PUSH	CX
+0480                       0806 	MOV	CX,43716	; Loop count for 1 second.
+0480                       0807 MOTORDELAY:			;  (8 MHz, 16-bit memory).
+0480                       0808 	AAM			; 83 clocks.
+0480                       0809 	AAM			; 83 clocks.
+0480                       0810 	LOOP	MOTORDELAY	; 17 clocks.
+0480                       0811 	POP	CX
+0480                       0812 MOTORSON:
+0480                       0813 	POP	AX
+0480                       0814 	RET
+0480                       0815 	ENDIF
+0480                       0816 ;
+0480                       0817 ; Disk read function.
+0480                       0818 ;
+0480                       0819 ; On entry:
+0480                       0820 ;	AL = Disk I/O driver number
+0480                       0821 ;	BX = Disk transfer address in DS
+0480                       0822 ;	CX = Number of sectors to transfer
+0480                       0823 ;	DX = Logical record number of transfer
+0480                       0824 ; On exit:
+0480                       0825 ;	CF clear if transfer complete
+0480                       0826 ;
+0480                       0827 ;	CF set if hard disk error.
+0480                       0828 ;	CX = number of sectors left to transfer.
+0480                       0829 ;	AL = disk error code
+0480                       0830 ;		0 = write protect error
+0480                       0831 ;		2 = not ready error
+0480                       0832 ;		4 = "data" (CRC) error
+0480                       0833 ;		6 = seek error
+0480                       0834 ;		8 = sector not found
+0480                       0835 ;	       10 = write fault
+0480                       0836 ;	       12 = "disk" (none of the above) error
+0480                       0837 ;
+0480                       0838 READ:
+0480 E8 6E 00              0839 	CALL	SEEK		;Position head
+0483 72 22                 0840 	JC	ERROR
+0485 06                    0841 	PUSH	ES		; Make ES same as DS.
+0486 8C DB                 0842 	MOV	BX,DS
+0488 8E C3                 0843 	MOV	ES,BX
+048A                       0844 RDLP:
+048A E8 0F 01              0845 	CALL	READSECT	;Perform sector read
+048D 72 17                 0846 	JC	POPESERROR
+048F FE C6                 0847 	INC	DH		;Next sector number
+0491 E2 F7                 0848 	LOOP	RDLP		;Read each sector requested
+0493 F8                    0849 	CLC			; No errors.
+0494 07                    0850 	POP	ES		; Restore ES register.
+0495 CB                    0851 	RET	L
+0496                       0852 ;
+0496                       0853 ; Disk write function.
+0496                       0854 ; Registers same on entry and exit as read above.
+0496                       0855 ;
+0496                       0856 WRITE:
+0496 E8 58 00              0857 	CALL	SEEK		;Position head
+0499 72 0C                 0858 	JC	ERROR
+049B                       0859 WRTLP:
+049B E8 31 01              0860 	CALL	WRITESECT	;Perform sector write
+049E 72 07                 0861 	JC	ERROR
+04A0 FE C6                 0862 	INC	DH		;Bump sector counter
+04A2 E2 F7                 0863 	LOOP	WRTLP		;Write CX sectors
+04A4 F8                    0864 	CLC			; No errors.
+04A5                       0865 WRITERET:
+04A5 CB                    0866 	RET	L
+04A6                       0867 
+04A6                       0868 POPESERROR:
+04A6 07                    0869 	POP	ES		; Restore ES register.
+04A7                       0870 ERROR:
+04A7 B3 FF                 0871 	MOV	BL,-1
+04A9 2E                    0872 	SEG	CS
+04AA 88 1D                 0873 	MOV	[DI],BL		; Indicate we don't know where head is.
+04AC BE BD 04              0874 	MOV	SI,ERRTAB
+04AF                       0875 GETCOD:
+04AF FE C3                 0876 	INC	BL		; Increment to next error code.
+04B1 2E                    0877 	SEG	CS
+04B2 AC                    0878 	LODB
+04B3 84 E0                 0879 	TEST	AH,AL		; See if error code matches disk status.
+04B5 74 F8                 0880 	JZ	GETCOD		; Try another if not.
+04B7 8A C3                 0881 	MOV	AL,BL		; Now we've got the code.
+04B9 D0 E0                 0882 	SHL	AL		; Multiply by two.
+04BB F9                    0883 	STC
+04BC CB                    0884 	RET	L
+04BD                       0885 
+04BD                       0886 ERRTAB:
+04BD 40                    0887 	DB	40H		;Write protect error
+04BE 80                    0888 	DB	80H		;Not ready error
+04BF 08                    0889 	DB	8		;CRC error
+04C0 02                    0890 	DB	2		;Seek error
+04C1 10                    0891 	DB	10H		;Sector not found
+04C2 20                    0892 	DB	20H		;Write fault
+04C3 07                    0893 	DB	7		;"Disk" error
+04C4                       0894 ;
+04C4                       0895 ; Direct disk read and write from INT 37 and INT 38.  Subroutine GETIODRIVER
+04C4                       0896 ; calls DSKCHG to convert disk drive number to I/O driver number.
+04C4                       0897 ;
+04C4                       0898 ; Setting CURDRV to -1 before calling DSKCHG forces DSKCHG to check the disk's
+04C4                       0899 ; density before returning the I/O driver number.  This is necessary because
+04C4                       0900 ; programs such as FORMAT could change the density of a disk and leave the
+04C4                       0901 ; head loaded.  If the head is loaded DSKCHG assumes the disk hasn't been
+04C4                       0902 ; changed and returns the old I/O driver number which could be wrong.
+04C4                       0903 ;
+04C4                       0904 ; CURDRV is set to -1 before returning so when DSKCHG is called by the
+04C4                       0905 ; operating system, it will tell the operating system the disk may have
+04C4                       0906 ; been changed (because it may have been).
+04C4                       0907 ;
+04C4                       0908 DIRECTREAD:
+04C4                       0909 
+04C4                       0910 	IF	WD1791
+04C4 E8 1A 00              0911 	CALL	GETIODRIVER	; Convert drive number to I/O driver number.
+04C7 72 11                 0912 	JC	DIRECTRET	; Return if DSKCHG returned error.
+04C9                       0913 	ENDIF
+04C9                       0914 
+04C9 9A 15 00 40 00        0915 	CALL	7*3,BIOSSEG	; Call READ.
+04CE EB 0A                 0916 	JMPS	DIRECTRET
+04D0                       0917 
+04D0                       0918 DIRECTWRITE:
+04D0                       0919 
+04D0                       0920 	IF	WD1791
+04D0 E8 0E 00              0921 	CALL	GETIODRIVER	; Convert drive number to I/O driver number.
+04D3 72 05                 0922 	JC	DIRECTRET	; Return if DSKCHG returned error.
+04D5                       0923 	ENDIF
+04D5                       0924 
+04D5 9A 18 00 40 00        0925 	CALL	8*3,BIOSSEG	; Call WRITE.
+04DA                       0926 DIRECTRET:
+04DA 2E                    0927 	SEG	CS
+04DB C6 06 2E 06 FF        0928 	MOV	B,[CURDRV],-1	; Force DSKCHG to do density check.
+04E0 CB                    0929 	RET	L
+04E1                       0930 
+04E1                       0931 	IF	WD1791
+04E1                       0932 GETIODRIVER:
+04E1 2E                    0933 	SEG	CS
+04E2 C6 06 2E 06 FF        0934 	MOV	B,[CURDRV],-1	; Force DSKCHG to do density check.
+04E7 53                    0935 	PUSH	BX
+04E8 51                    0936 	PUSH	CX
+04E9 9A 1B 00 40 00        0937 	CALL	9*3,BIOSSEG	; Call DSKCHG.
+04EE 59                    0938 	POP	CX
+04EF 5B                    0939 	POP	BX
+04F0 C3                    0940 	RET
+04F1                       0941 	ENDIF
+04F1                       0942 ;
+04F1                       0943 ; Function:
+04F1                       0944 ;	Seeks to proper track.
+04F1                       0945 ; On entry:
+04F1                       0946 ;	Same as for disk read or write above.
+04F1                       0947 ; On exit:
+04F1                       0948 ;	AH = Drive select byte
+04F1                       0949 ;	DL = Track number
+04F1                       0950 ;	DH = Sector number
+04F1                       0951 ;	SI = Disk transfer address in DS
+04F1                       0952 ;	DI = pointer to drive's track counter in CS
+04F1                       0953 ;	CX unchanged (number of sectors)
+04F1                       0954 ;
+04F1                       0955 SEEK:
+04F1 8B F3                 0956 	MOV	SI,BX		; Save transfer address
+04F3 98                    0957 	CBW
+04F4 8B D8                 0958 	MOV	BX,AX		; Prepare to index on drive number
+04F6                       0959 
+04F6                       0960 	IF	WD1791		; If two disk formats per drive.
+04F6 D0 E8                 0961 	SHR	AL		; Convert to physical disk drive number.
+04F8                       0962 	ENDIF
+04F8                       0963 
+04F8 E8 6E FF              0964 	CALL	CHKNEW		; Unload head if changing drives.
+04FB 2E                    0965 	SEG	CS
+04FC 8A 87 2F 06           0966 	MOV	AL,[BX+DRVTAB]	; Get drive-select byte.
+0500                       0967 
+0500                       0968 	IF	CROMEMCO16FDC
+0500                       0969 	CALL	MOTOR		; Wait for the motors to come up to speed.
+0500                       0970 	ENDIF
+0500                       0971 
+0500 E6 E4                 0972 	OUTB	DISK+4		; Select drive.
+0502                       0973 
+0502                       0974 	IF	CROMEMCO
+0502                       0975 	OR	AL,80H		; Set auto-wait bit.
+0502                       0976 	ENDIF
+0502                       0977 
+0502 8A E0                 0978 	MOV	AH,AL		; Save drive-select byte in AH.
+0504 92                    0979 	XCHG	AX,DX		; AX = logical sector number.
+0505 B2 1A                 0980 	MOV	DL,26		; 26 sectors/track unless changed below
+0507                       0981 
+0507                       0982 	IF	SCP
+0507 F6 C6 10              0983 	TEST	DH,SMALLBIT	; Check if small disk.
+050A 74 0B                 0984 	JZ	BIGONE		; Jump if big disk.
+050C B2 12                 0985 	MOV	DL,18		; Assume 18 sectors on small track.
+050E F6 C6 08              0986 	TEST	DH,DDENBIT	; Check if double-density.
+0511 74 0B                 0987 	JZ	HAVSECT		; Jump if not.
+0513 B2 08                 0988 	MOV	DL,SMALLDDSECT	; Number of sectors on small DD track.
+0515 EB 07                 0989 	JP	HAVSECT
+0517                       0990 BIGONE:
+0517 F6 C6 08              0991 	TEST	DH,DDENBIT	; Check if double-density.
+051A 74 02                 0992 	JZ	HAVSECT		; Jump if not.
+051C B2 08                 0993 	MOV	DL,LARGEDDSECT	; Number of sectors on big DD track.
+051E                       0994 	ENDIF
+051E                       0995 
+051E                       0996 	IF	TARBELLDD	; Tarbell DD controller.
+051E                       0997 	TEST	DH,DDENBIT	; Check for double-density.
+051E                       0998 	JZ	HAVSECT
+051E                       0999 	MOV	DL,LARGEDDSECT	; Number of sectors on DD track.
+051E                       1000 	ENDIF
+051E                       1001 
+051E                       1002 	IF	CROMEMCO4FDC
+051E                       1003 	TEST	DH,SMALLBIT	; Check if small disk.
+051E                       1004 	JNZ	HAVSECT		; Jump if not.
+051E                       1005 	MOV	DL,18		; 18 sectors on small disk track.
+051E                       1006 	ENDIF
+051E                       1007 
+051E                       1008 	IF	CROMEMCO16FDC
+051E                       1009 	TEST	DH,SMALLBIT	; Check if small disk.
+051E                       1010 	JNZ	BIGONE		; Jump if big disk.
+051E                       1011 	MOV	DL,18		; Assume 18 sectors on small track.
+051E                       1012 	TEST	DH,DDENBIT	; Check if double-density.
+051E                       1013 	JZ	HAVSECT		; Jump if not.
+051E                       1014 	MOV	DL,SMALLDDSECT	; Number of sectors on small DD track.
+051E                       1015 	JP	HAVSECT
+051E                       1016 BIGONE:
+051E                       1017 	TEST	DH,DDENBIT	; Check if double-density.
+051E                       1018 	JZ	HAVSECT		; Jump if not.
+051E                       1019 	MOV	DL,LARGEDDSECT	; Number of sectors on big DD track.
+051E                       1020 	ENDIF
+051E                       1021 
+051E                       1022 HAVSECT:
+051E F6 F2                 1023 	DIV	AL,DL		; AL = track, AH = sector.
+0520 92                    1024 	XCHG	AX,DX		; AH has drive-select byte, DX = track & sector.
+0521 FE C6                 1025 	INC	DH		; Sectors start at one, not zero.
+0523 2E                    1026 	SEG	CS
+0524 8A 9F 37 06           1027 	MOV	BL,[BX+TRKPT]	; Get this drive's displacement into track table.
+0528 81 C3 3F 06           1028 	ADD	BX,TRKTAB	; BX now points to track counter for this drive.
+052C 8B FB                 1029 	MOV	DI,BX
+052E 8A C2                 1030 	MOV	AL,DL		; Move new track number into AL.
+0530 2E                    1031 	SEG	CS
+0531 86 05                 1032 	XCHG	AL,[DI]		; Xchange current track with desired track
+0533 E6 E1                 1033 	OUT	DISK+1		; Inform controller chip of current track
+0535 3A C2                 1034 	CMP	AL,DL		; See if we're at the right track.
+0537 74 B7                 1035 	JZ	RET
+0539 B7 02                 1036 	MOV	BH,2		; Seek retry count
+053B 3C FF                 1037 	CMP	AL,-1		; Head position known?
+053D 75 05                 1038 	JNZ	NOHOME		; If not, home head
+053F                       1039 TRYSK:
+053F E8 BB 00              1040 	CALL	HOME
+0542 72 13                 1041 	JC	SEEKERR
+0544                       1042 NOHOME:
+0544 8A C2                 1043 	MOV	AL,DL		; AL = new track number.
+0546 E6 E3                 1044 	OUT	DISK+3
+0548 B0 1C                 1045 	MOV	AL,1CH+STPSPD	; Seek command.
+054A E8 D2 00              1046 	CALL	MOVHEAD
+054D 24 98                 1047 	AND	AL,98H		; Accept not ready, seek, & CRC error bits.
+054F 74 9F                 1048 	JZ	RET
+0551 78 04                 1049 	JS	SEEKERR		; No retries if not ready
+0553 FE CF                 1050 	DEC	BH
+0555 75 E8                 1051 	JNZ	TRYSK
+0557                       1052 SEEKERR:
+0557 8A E0                 1053 	MOV	AH,AL		; Put status in AH.
+0559 A8 80                 1054 	TEST	AL,80H		; See if it was a Not Ready error.
+055B F9                    1055 	STC
+055C 75 92                 1056 	JNZ	RET		; Status is OK for Not Ready error.
+055E B4 02                 1057 	MOV	AH,2		; Everything else is seek error.
+0560 C3                    1058 	RET
+0561                       1059 
+0561                       1060 SETUP:
+0561 8A DE                 1061 	MOV	BL,DH		; Move sector number to BL to play with
+0563                       1062 
+0563                       1063 	IF	SCP+CROMEMCO16FDC
+0563 F6 C4 08              1064 	TEST	AH,DDENBIT	; Check for double density.
+0566 74 07                 1065 	JZ	CHECKSMALL	; Not DD, check size for SD.
+0568                       1066 	ENDIF
+0568                       1067 
+0568                       1068 	IF	TARBELLDD
+0568                       1069 	TEST	AH,DDENBIT	; Check for double density.
+0568                       1070 	JZ	CHECK26		; Not DD.
+0568                       1071 	ENDIF
+0568                       1072 
+0568                       1073 	IF	WD1791
+0568                       1074 
+0568                       1075 	IF	(SCP+TARBELL)*LARGEDS+SCP*SMALLDS
+0568                       1076 	MOV	AL,AH		; Select front side of disk.
+0568                       1077 	OUT	DISK+4
+0568                       1078 	ENDIF
+0568                       1079 
+0568                       1080 	IF	CROMEMCO*(LARGEDS+SMALLDS)
+0568                       1081 	MOV	AL,0FFH		; Select front side of disk.
+0568                       1082 	OUT	04H
+0568                       1083 	ENDIF
+0568                       1084 
+0568 82 FB 08              1085 	CMP	BL,8		; See if legal DD sector number.
+056B 76 1F                 1086 	JBE	PUTSEC		; Jump if ok.
+056D                       1087 
+056D                       1088 	IF	(LARGEDS-1)*((SMALLDS*(SCP+CROMEMCO))-1)
+056D EB 0F                 1089 	JP	STEP		; If only SS drives, we gotta step.
+056F                       1090 	ENDIF
+056F                       1091 
+056F                       1092 	IF	SCP*LARGEDS*(SMALLDS-1)
+056F                       1093 	TEST	AH,SMALLBIT	; Check for 5.25 inch disk.
+056F                       1094 	JNZ	STEP		; Jump if small because SMALLDS is off.
+056F                       1095 	ENDIF
+056F                       1096 
+056F                       1097 	IF	SCP*SMALLDS*(LARGEDS-1)
+056F                       1098 	TEST	AH,SMALLBIT	; Check for 8 inch disk.
+056F                       1099 	JZ	STEP		; Jump if large because LARGEDS is off.
+056F                       1100 	ENDIF
+056F                       1101 
+056F                       1102 	IF	CROMEMCO16FDC*LARGEDS*(SMALLDS-1)
+056F                       1103 	TEST	AH,SMALLBIT	; Check for 5.25 inch disk.
+056F                       1104 	JZ	STEP		; Jump if small because SMALLDS is off.
+056F                       1105 	ENDIF
+056F                       1106 
+056F                       1107 	IF	CROMEMCO16FDC*SMALLDS*(LARGEDS-1)
+056F                       1108 	TEST	AH,SMALLBIT	; Check for 8 inch disk.
+056F                       1109 	JNZ	STEP		; Jump if large because LARGEDS is off.
+056F                       1110 	ENDIF
+056F                       1111 
+056F                       1112 	IF	LARGEDS+SMALLDS*(SCP+CROMEMCO)
+056F                       1113 	SUB	BL,8		; Find true sector for back side.
+056F                       1114 	CMP	BL,8		; See if ok now.
+056F                       1115 	JA	STEP		; Have to step if still too big.
+056F                       1116 
+056F                       1117 	IF	SCP+TARBELLDD
+056F                       1118 	MOV	AL,AH		; Move drive select byte into AL.
+056F                       1119 	OR	AL,BACKBIT	; Select back side.
+056F                       1120 	OUT	DISK+4
+056F                       1121 	ENDIF
+056F                       1122 
+056F                       1123 	IF	CROMEMCO16FDC
+056F                       1124 	MOV	AL,BACKBIT	; Select back side.
+056F                       1125 	OUT	04H
+056F                       1126 	ENDIF
+056F                       1127 
+056F                       1128 	JP	PUTSEC
+056F                       1129 	ENDIF
+056F                       1130 
+056F                       1131 	ENDIF
+056F                       1132 
+056F                       1133 	IF	SCP
+056F                       1134 CHECKSMALL:
+056F F6 C4 10              1135 	TEST	AH,SMALLBIT	; See if big disk.
+0572 74 05                 1136 	JZ	CHECK26		; Jump if big.
+0574                       1137 	ENDIF
+0574                       1138 
+0574                       1139 	IF	CROMEMCO
+0574                       1140 CHECKSMALL:
+0574                       1141 	TEST	AH,SMALLBIT	; See if big disk.
+0574                       1142 	JNZ	CHECK26		; Jump if big.
+0574                       1143 	ENDIF
+0574                       1144 
+0574                       1145 	IF 	SCP+CROMEMCO
+0574 82 FB 12              1146 	CMP	BL,18		; See if legal small SD/SS sector.
+0577 77 05                 1147 	JA	STEP		; Jump if not.
+0579                       1148 	ENDIF
+0579                       1149 
+0579                       1150 CHECK26:
+0579 82 FB 1A              1151 	CMP	BL,26		; See if legal large SD/SS sector.
+057C 76 0E                 1152 	JBE	PUTSEC		; Jump if ok.
+057E                       1153 STEP:
+057E FE C2                 1154 	INC	DL		; Increment track number.
+0580 B0 58                 1155 	MOV	AL,58H		; Step in with update.
+0582 E8 9A 00              1156 	CALL	DCOM
+0585 2E                    1157 	SEG	CS
+0586 FE 05                 1158 	INC	B,[DI]		; Increment the track pointer.
+0588 B6 01                 1159 	MOV	DH,1		; After step, do first sector.
+058A 8A DE                 1160 	MOV	BL,DH		; Fix temporary sector number also.
+058C                       1161 PUTSEC:
+058C 8A C3                 1162 	MOV	AL,BL		; Output sector number to controller.
+058E E6 E2                 1163 	OUT	DISK+2
+0590 FA                    1164 	DI			; Interrupts not allowed until I/O done
+0591                       1165 
+0591                       1166 	IF	SCP+CROMEMCO
+0591 E4 E4                 1167 	INB	DISK+4		; Get head-load bit.
+0593                       1168 	ENDIF
+0593                       1169 
+0593                       1170 	IF	TARBELL
+0593                       1171 	INB	DISK
+0593                       1172 	ENDIF
+0593                       1173 
+0593 F6 D0                 1174 	NOT	AL
+0595 24 20                 1175 	AND	AL,20H		; Check head load status
+0597 74 C7                 1176 	JZ	RET
+0599 B0 04                 1177 	MOV	AL,4
+059B C3                    1178 	RET
+059C                       1179 
+059C                       1180 READSECT:
+059C E8 C2 FF              1181 	CALL	SETUP
+059F B3 0A                 1182 	MOV	BL,10		; Retry count for hard error.
+05A1 87 F7                 1183 	XCHG	DI,SI		; Transfer address to DI.
+05A3 52                    1184 	PUSH	DX		; Save track & sector number.
+05A4 B2 E3                 1185 	MOV	DL,DISK+3	; Disk controller data port.
+05A6                       1186 RDAGN:
+05A6 0C 80                 1187 	OR	AL,READCOM
+05A8 E6 E0                 1188 	OUT	DISK
+05AA                       1189 
+05AA                       1190 	IF	CROMEMCO
+05AA                       1191 	MOV	AL,AH		; Turn on auto-wait.
+05AA                       1192 	OUT	DISK+4
+05AA                       1193 	ENDIF
+05AA                       1194 
+05AA 8B EF                 1195 	MOV	BP,DI		; Save address for retry.
+05AC EB 01                 1196 	JMPS	RLOOPENTRY
+05AE                       1197 RLOOP:
+05AE AA                    1198 	STOB			; Write into memory.
+05AF                       1199 RLOOPENTRY:
+05AF                       1200 
+05AF                       1201 	IF	SCP
+05AF E4 E5                 1202 	IN	DISK+5		; Wait for DRQ or INTRQ.
+05B1                       1203 	ENDIF
+05B1                       1204 
+05B1                       1205 	IF	TARBELL+CROMEMCO
+05B1                       1206 	IN	DISK+4
+05B1                       1207 	ENDIF
+05B1                       1208 
+05B1                       1209 	IF	TARBELL
+05B1                       1210 	SHL	AL
+05B1                       1211 	INB	DX		; Read data from disk controller chip.
+05B1                       1212 	JC	RLOOP
+05B1                       1213 	ENDIF
+05B1                       1214 
+05B1                       1215 	IF	SCP+CROMEMCO
+05B1 D0 E8                 1216 	SHR	AL
+05B3 EC                    1217 	INB	DX		; Read data from disk controller chip.
+05B4 73 F8                 1218 	JNC	RLOOP
+05B6                       1219 	ENDIF
+05B6                       1220 
+05B6 FB                    1221 	EI			; Interrupts OK now
+05B7 E8 6B 00              1222 	CALL	GETSTAT
+05BA 24 9C                 1223 	AND	AL,9CH
+05BC 74 0D                 1224 	JZ	RDPOP
+05BE 8B FD                 1225 	MOV	DI,BP		; Get origainal address back for retry.
+05C0 8A F8                 1226 	MOV	BH,AL		; Save error status for report
+05C2 B0 00                 1227 	MOV	AL,0
+05C4 FE CB                 1228 	DEC	BL
+05C6 75 DE                 1229 	JNZ	RDAGN
+05C8 8A E7                 1230 	MOV	AH,BH		; Put error status in AH.
+05CA F9                    1231 	STC
+05CB                       1232 RDPOP:
+05CB 5A                    1233 	POP	DX		; Get back track & sector number.
+05CC 87 FE                 1234 	XCHG	SI,DI		; Address back to SI.
+05CE                       1235 
+05CE                       1236 	IF	TARBELL
+05CE                       1237 FORCINT:
+05CE                       1238 	MOV	AL,0D0H		; Tarbell controllers need this Force Interrupt
+05CE                       1239 	OUT	DISK		;  so that Type I status is always available
+05CE                       1240 	MOV	AL,10		;  at the 1771/1793 status port so we can find
+05CE                       1241 INTDLY:				;  out if the head is loaded.  SCP and Cromemco
+05CE                       1242 	DEC	AL		;  controllers have head-load status available
+05CE                       1243 	JNZ	INTDLY		;  at the DISK+4 status port.
+05CE                       1244 	ENDIF
+05CE                       1245 
+05CE C3                    1246 	RET
+05CF                       1247 
+05CF                       1248 WRITESECT:
+05CF E8 8F FF              1249 	CALL	SETUP
+05D2 B3 0A                 1250 	MOV	BL,10
+05D4 52                    1251 	PUSH	DX		; Save track & sector number.
+05D5 B2 E3                 1252 	MOV	DL,DISK+3	; Disk controller data port.
+05D7                       1253 WRTAGN:
+05D7 0C A0                 1254 	OR	AL,WRITECOM
+05D9 E6 E0                 1255 	OUT	DISK
+05DB                       1256 
+05DB                       1257 	IF	CROMEMCO
+05DB                       1258 	MOV	AL,AH		; Turn on auto-wait.
+05DB                       1259 	OUT	DISK+4
+05DB                       1260 	ENDIF
+05DB                       1261 
+05DB 8B EE                 1262 	MOV	BP,SI
+05DD                       1263 WRLOOP:
+05DD                       1264 
+05DD                       1265 	IF	SCP
+05DD E4 E5                 1266 	INB	DISK+5
+05DF                       1267 	ENDIF
+05DF                       1268 
+05DF                       1269 	IF	TARBELL+CROMEMCO
+05DF                       1270 	INB	DISK+4
+05DF                       1271 	ENDIF
+05DF                       1272 
+05DF                       1273 	IF	SCP+CROMEMCO
+05DF D0 E8                 1274 	SHR	AL
+05E1 AC                    1275 	LODB			; Get data from memory.
+05E2 EE                    1276 	OUTB	DX		; Write to disk.
+05E3 73 F8                 1277 	JNC	WRLOOP
+05E5                       1278 	ENDIF
+05E5                       1279 
+05E5                       1280 	IF	TARBELL
+05E5                       1281 	SHL	AL
+05E5                       1282 	LODB			; Get data from memory.
+05E5                       1283 	OUTB	DX		; Write to disk.
+05E5                       1284 	JC	WRLOOP
+05E5                       1285 	ENDIF
+05E5                       1286 
+05E5 FB                    1287 	EI			; Interrupts OK now.
+05E6 4E                    1288 	DEC	SI
+05E7 E8 3B 00              1289 	CALL	GETSTAT
+05EA 24 FC                 1290 	AND	AL,0FCH
+05EC 74 0D                 1291 	JZ	WRPOP
+05EE 8B F5                 1292 	MOV	SI,BP
+05F0 8A F8                 1293 	MOV	BH,AL
+05F2 B0 00                 1294 	MOV	AL,0
+05F4 FE CB                 1295 	DEC	BL
+05F6 75 DF                 1296 	JNZ	WRTAGN
+05F8 8A E7                 1297 	MOV	AH,BH		; Error status to AH.
+05FA F9                    1298 	STC
+05FB                       1299 WRPOP:
+05FB 5A                    1300 	POP	DX		; Get back track & sector number.
+05FC                       1301 
+05FC                       1302 	IF	TARBELL
+05FC                       1303 	JMPS	FORCINT
+05FC                       1304 	ENDIF
+05FC                       1305 
+05FC                       1306 	IF	SCP+CROMEMCO
+05FC C3                    1307 	RET
+05FD                       1308 	ENDIF
+05FD                       1309 ;
+05FD                       1310 ; Subroutine to restore the read/write head to track 0.
+05FD                       1311 ;
+05FD                       1312 	IF	SCP+CROMEMCO+TARBELL*(FASTSEEK-1)
+05FD                       1313 HOME:
+05FD                       1314 	ENDIF
+05FD                       1315 
+05FD                       1316 	IF	FASTSEEK*CROMEMCO
+05FD                       1317 	TEST	AH,SMALLBIT	; Check for large disk.
+05FD                       1318 	JNZ	RESTORE		; Big disks are fast seek PerSci.
+05FD                       1319 	ENDIF
+05FD                       1320 
+05FD B3 03                 1321 	MOV	BL,3
+05FF                       1322 TRYHOM:
+05FF                       1323 
+05FF                       1324 	IF	SCP*FASTSEEK
+05FF 8A C4                 1325 	MOV	AL,AH		; Turn on Restore to PerSci.
+0601 0C 80                 1326 	OR	AL,80H
+0603 E6 E4                 1327 	OUTB	DISK+4
+0605                       1328 	ENDIF
+0605                       1329 
+0605 B0 0C                 1330 	MOV	AL,0CH+STPSPD	; Restore with verify command.
+0607 E8 15 00              1331 	CALL	DCOM
+060A 24 98                 1332 	AND	AL,98H
+060C                       1333 
+060C                       1334 	IF	SCP*FASTSEEK
+060C 8A C4                 1335 	MOV	AL,AH		; Restore off.
+060E E6 E4                 1336 	OUTB	DISK+4
+0610                       1337 	ENDIF
+0610                       1338 
+0610 74 EA                 1339 	JZ	RET
+0612 78 09                 1340 	JS	HOMERR		; No retries if not ready
+0614 B0 58                 1341 	MOV	AL,58H+STPSPD	; Step in with update
+0616 E8 06 00              1342 	CALL	DCOM
+0619 FE CB                 1343 	DEC	BL
+061B 75 E2                 1344 	JNZ	TRYHOM
+061D                       1345 HOMERR:
+061D F9                    1346 	STC
+061E C3                    1347 	RET
+061F                       1348 ;
+061F                       1349 ; RESTORE for PerSci drives.
+061F                       1350 ; Doesn't exist yet for Tarbell controllers.
+061F                       1351 ;
+061F                       1352 	IF	FASTSEEK*TARBELL
+061F                       1353 HOME:
+061F                       1354 RESTORE:
+061F                       1355 	RET
+061F                       1356 	ENDIF
+061F                       1357 
+061F                       1358 	IF	FASTSEEK*CROMEMCO4FDC
+061F                       1359 RESTORE:
+061F                       1360 	MOV	AL,0C4H		;READ ADDRESS command to keep head loaded
+061F                       1361 	OUT	DISK
+061F                       1362 	MOV	AL,77H
+061F                       1363 	OUT	4
+061F                       1364 CHKRES:
+061F                       1365 	IN	4
+061F                       1366 	AND	AL,40H
+061F                       1367 	JZ	RESDONE
+061F                       1368 	IN	DISK+4
+061F                       1369 	TEST	AL,DONEBIT
+061F                       1370 	JZ	CHKRES
+061F                       1371 	IN	DISK
+061F                       1372 	JP	RESTORE		;Reload head
+061F                       1373 RESDONE:
+061F                       1374 	MOV	AL,7FH
+061F                       1375 	OUT	4
+061F                       1376 	CALL	GETSTAT
+061F                       1377 	MOV	AL,0
+061F                       1378 	OUT	DISK+1		;Tell 1771 we're now on track 0
+061F                       1379 	RET
+061F                       1380 	ENDIF
+061F                       1381 
+061F                       1382 	IF	FASTSEEK*CROMEMCO16FDC
+061F                       1383 RESTORE:
+061F                       1384 	MOV	AL,0D7H		; Turn on Drive-Select and Restore.
+061F                       1385 	OUTB	4
+061F                       1386 	PUSH	AX
+061F                       1387 	AAM			; 10 uS delay.
+061F                       1388 	POP	AX
+061F                       1389 RESWAIT:
+061F                       1390 	INB	4		; Wait till Seek Complete is active.
+061F                       1391 	TEST	AL,40H
+061F                       1392 	JNZ	RESWAIT
+061F                       1393 	MOV	AL,0FFH		; Turn off Drive-Select and Restore.
+061F                       1394 	OUTB	4
+061F                       1395 	SUB	AL,AL		; Tell 1793 we're on track 0.
+061F                       1396 	OUTB	DISK+1
+061F                       1397 	RET
+061F                       1398 	ENDIF
+061F                       1399 ;
+061F                       1400 ; Subroutine to move the read/write head to the desired track.
+061F                       1401 ; Usually falls through to DCOM unless special handling for
+061F                       1402 ; PerSci drives is required in which case go to FASTSK.
+061F                       1403 ;
+061F                       1404 	IF	SCP+CROMEMCO+TARBELL*(FASTSEEK-1)
+061F                       1405 MOVHEAD:
+061F                       1406 	ENDIF
+061F                       1407 
+061F                       1408 	IF	CROMEMCO*FASTSEEK
+061F                       1409 	TEST	AH,SMALLBIT	; Check for PerSci.
+061F                       1410 	JNZ	FASTSK
+061F                       1411 	ENDIF
+061F                       1412 
+061F                       1413 DCOM:
+061F E6 E0                 1414 	OUT	DISK
+0621 50                    1415 	PUSH	AX
+0622 D4 0A                 1416 	AAM			;Delay 10 microseconds
+0624 58                    1417 	POP	AX
+0625                       1418 GETSTAT:
+0625 E4 E4                 1419 	IN	DISK+4
+0627 A8 01                 1420 	TEST	AL,DONEBIT
+0629                       1421 
+0629                       1422 	IF	TARBELL
+0629                       1423 	JNZ	GETSTAT
+0629                       1424 	ENDIF
+0629                       1425 
+0629                       1426 	IF	SCP+CROMEMCO
+0629 74 FA                 1427 	JZ	GETSTAT
+062B                       1428 	ENDIF
+062B                       1429 
+062B E4 E0                 1430 	IN	DISK
+062D C3                    1431 	RET
+062E                       1432 ;
+062E                       1433 ; Fast seek code for PerSci drives.
+062E                       1434 ; Tarbell not installed yet.
+062E                       1435 ;
+062E                       1436 	IF	FASTSEEK*TARBELL
+062E                       1437 MOVHEAD:
+062E                       1438 FASTSK:
+062E                       1439 	RET
+062E                       1440 	ENDIF
+062E                       1441 
+062E                       1442 	IF	FASTSEEK*CROMEMCO
+062E                       1443 FASTSK:
+062E                       1444 	MOV	AL,6FH
+062E                       1445 	OUT	4
+062E                       1446 	MOV	AL,18H
+062E                       1447 	CALL	DCOM
+062E                       1448 SKWAIT:
+062E                       1449 	IN	4
+062E                       1450 	TEST	AL,40H
+062E                       1451 	JNZ	SKWAIT
+062E                       1452 	MOV	AL,7FH
+062E                       1453 	OUT	4
+062E                       1454 	MOV	AL,0
+062E                       1455 	RET
+062E                       1456 	ENDIF
+062E                       1457 
+062E FF                    1458 CURDRV:	DB	-1
+062F                       1459 ;
+062F                       1460 ; Explanation of tables below.
+062F                       1461 ;
+062F                       1462 ; DRVTAB is a table of bytes which are sent to the disk controller as drive-
+062F                       1463 ; select bytes to choose which physical drive is selected for each disk I/O
+062F                       1464 ; driver.  It also selects whether the disk is 5.25-inch or 8-inch, single-
+062F                       1465 ; density or double-density.  Always select side 0 in the drive-select byte if
+062F                       1466 ; a side-select bit is available.  There should be one entry in the DRVTAB
+062F                       1467 ; table for each disk I/O driver.  Exactly which bits in the drive-select byte
+062F                       1468 ; do what depends on which disk controller is used.
+062F                       1469 ;
+062F                       1470 ; TRKTAB is a table of bytes used to store which track the read/write
+062F                       1471 ; head of each drive is on.  Each physical drive should have its own
+062F                       1472 ; entry in TRKTAB.
+062F                       1473 ;
+062F                       1474 ; TRKPT is a table of bytes which indicates which TRKTAB entry each
+062F                       1475 ; disk I/O driver should use.  Since each physical drive may be used for
+062F                       1476 ; more than one disk I/O driver, more than one entry in TRKPT may point
+062F                       1477 ; to the same entry in TRKTAB.  Drives such as PerSci 277s which use
+062F                       1478 ; the same head positioner for more than one drive should share entrys
+062F                       1479 ; in TRKTAB.
+062F                       1480 ;
+062F                       1481 ; INITTAB is the initialization table for 86-DOS as described in the
+062F                       1482 ; 86-DOS Programer's Manual under "Customizing the I/O System."
+062F                       1483 ;
+062F                       1484 	IF	SCP*COMBIN*FASTSEEK
+062F                       1485 ;
+062F                       1486 ; A PerSci 277 or 299 and one 5.25-inch drive.
+062F                       1487 ;
+062F                       1488 DRVTAB:	DB	00H,08H,01H,09H,10H,18H,00H,08H,01H,09H
+062F                       1489 TRKPT:	DB	0,0,0,0,1,1,0,0,0,0
+062F                       1490 TRKTAB:	DB	-1,-1
+062F                       1491 INITTAB:
+062F                       1492 	IF	CONVERT-1
+062F                       1493 	DB	6		; Number of disk I/O drivers.
+062F                       1494 	ENDIF
+062F                       1495 
+062F                       1496 	IF	CONVERT
+062F                       1497 	DB	10
+062F                       1498 	ENDIF
+062F                       1499 
+062F                       1500 	DB	0		; Disk I/O driver 0 uses disk drive 0.
+062F                       1501 	DW	LSDRIVE		; Disk I/O driver 0 is 8-inch single-density.
+062F                       1502 	DB	0		; Disk I/O driver 1 uses disk drive 0.
+062F                       1503 	DW	LDDRIVE		; Disk I/O driver 1 is 8-inch double-density.
+062F                       1504 	DB	1		; Etc.
+062F                       1505 	DW	LSDRIVE
+062F                       1506 	DB	1
+062F                       1507 	DW	LDDRIVE
+062F                       1508 	DB	2
+062F                       1509 	DW	SSDRIVE
+062F                       1510 	DB	2
+062F                       1511 	DW	SDDRIVE
+062F                       1512 
+062F                       1513 	IF	CONVERT
+062F                       1514 	DB	3
+062F                       1515 	DW	OLDLSDRIVE
+062F                       1516 	DB	3
+062F                       1517 	DW	OLDLDDRIVE
+062F                       1518 	DB	4
+062F                       1519 	DW	OLDLSDRIVE
+062F                       1520 	DB	4
+062F                       1521 	DW	OLDLDDRIVE
+062F                       1522 	ENDIF
+062F                       1523 	ENDIF
+062F                       1524 
+062F                       1525 	IF	SCP*LARGE*FASTSEEK
+062F                       1526 ;
+062F                       1527 ; PerSci 277 or 299.
+062F                       1528 ;
+062F 00 08 01 09 00 08 01  1529 DRVTAB:	DB	00H,08H,01H,09H,00H,08H,01H,09H
+     09                   
+0637 00 00 00 00 00 00 00  1530 TRKPT:	DB	0,0,0,0,0,0,0,0
+     00                   
+063F FF                    1531 TRKTAB:	DB	-1
+0640                       1532 INITTAB:
+0640                       1533 	IF	CONVERT-1
+0640                       1534 	DB	4
+0640                       1535 	ENDIF
+0640                       1536 
+0640                       1537 	IF	CONVERT
+0640 08                    1538 	DB	8
+0641                       1539 	ENDIF
+0641                       1540 
+0641 00                    1541 	DB	0
+0642 59 06                 1542 	DW	LSDRIVE
+0644 00                    1543 	DB	0
+0645 6D 06                 1544 	DW	LDDRIVE
+0647 01                    1545 	DB	1
+0648 59 06                 1546 	DW	LSDRIVE
+064A 01                    1547 	DB	1
+064B 6D 06                 1548 	DW	LDDRIVE
+064D                       1549 
+064D                       1550 	IF	CONVERT
+064D 02                    1551 	DB	2
+064E 63 06                 1552 	DW	OLDLSDRIVE
+0650 02                    1553 	DB	2
+0651 6D 06                 1554 	DW	OLDLDDRIVE
+0653 03                    1555 	DB	3
+0654 63 06                 1556 	DW	OLDLSDRIVE
+0656 03                    1557 	DB	3
+0657 6D 06                 1558 	DW	OLDLDDRIVE
+0659                       1559 	ENDIF
+0659                       1560 	ENDIF
+0659                       1561 
+0659                       1562 	IF	TARBELLDD
+0659                       1563 ;
+0659                       1564 ; Two 8-inch Shugart-type drives.
+0659                       1565 ;
+0659                       1566 DRVTAB:	DB	0,8,10H,18H,0,8,10H,18H
+0659                       1567 TRKPT:	DB	0,0,1,1,0,0,1,1
+0659                       1568 TRKTAB:	DB	-1,-1
+0659                       1569 INITTAB:
+0659                       1570 
+0659                       1571 	IF	CONVERT-1
+0659                       1572 	DB	4
+0659                       1573 	ENDIF
+0659                       1574 
+0659                       1575 	IF	CONVERT
+0659                       1576 	DB	8
+0659                       1577 	ENDIF
+0659                       1578 
+0659                       1579 	DB	0
+0659                       1580 	DW	LSDRIVE
+0659                       1581 	DB	0
+0659                       1582 	DW	LDDRIVE
+0659                       1583 	DB	1
+0659                       1584 	DW	LSDRIVE
+0659                       1585 	DB	1
+0659                       1586 	DW	LDDRIVE
+0659                       1587 
+0659                       1588 	IF	CONVERT
+0659                       1589 	DB	2
+0659                       1590 	DW	OLDLSDRIVE
+0659                       1591 	DB	2
+0659                       1592 	DW	OLDLDDRIVE
+0659                       1593 	DB	3
+0659                       1594 	DW	OLDLSDRIVE
+0659                       1595 	DB	3
+0659                       1596 	DW	OLDLDDRIVE
+0659                       1597 	ENDIF
+0659                       1598 	ENDIF
+0659                       1599 
+0659                       1600 	IF	TARBELLSD
+0659                       1601 ;
+0659                       1602 ; Four 8-inch Shugart-type drives.
+0659                       1603 ;
+0659                       1604 DRVTAB:	DB	0F2H,0E2H,0F2H,0E2H
+0659                       1605 TRKPT:	DB	0,1,0,1
+0659                       1606 TRKTAB:	DB	-1,-1
+0659                       1607 INITTAB:
+0659                       1608 
+0659                       1609 	IF	CONVERT-1
+0659                       1610 	DB	2
+0659                       1611 	ENDIF
+0659                       1612 
+0659                       1613 	IF	CONVERT
+0659                       1614 	DB	4
+0659                       1615 	ENDIF
+0659                       1616 
+0659                       1617 	DB	0
+0659                       1618 	DW	LSDRIVE
+0659                       1619 	DB	1
+0659                       1620 	DW	LSDRIVE
+0659                       1621 
+0659                       1622 	IF	CONVERT
+0659                       1623 	DB	2
+0659                       1624 	DW	OLDLSDRIVE
+0659                       1625 	DB	3
+0659                       1626 	DW	OLDLSDRIVE
+0659                       1627 	ENDIF
+0659                       1628 	ENDIF
+0659                       1629 ;
+0659                       1630 ; Cromemco drive select byte is derived as follows:
+0659                       1631 ;	Bit 7 = 0
+0659                       1632 ;	Bit 6 = 1 if double density (if 16FDC)
+0659                       1633 ;	Bit 5 = 1 (motor on)
+0659                       1634 ;	Bit 4 = 0 for 5", 1 for 8" drives
+0659                       1635 ;	Bit 3 = 1 for drive 3
+0659                       1636 ;	Bit 2 = 1 for drive 2
+0659                       1637 ;	Bit 1 = 1 for drive 1
+0659                       1638 ;	Bit 0 = 1 for drive 0
+0659                       1639 ;
+0659                       1640 	IF	CROMEMCO4FDC*LARGE
+0659                       1641 ;
+0659                       1642 ; PerSci 277 drive.
+0659                       1643 ;
+0659                       1644 DRVTAB:	DB	31H,32H,31H,32H
+0659                       1645 TRKPT:	DB	0,0,0,0
+0659                       1646 TRKTAB:	DB	-1
+0659                       1647 INITTAB:
+0659                       1648 
+0659                       1649 	IF	CONVERT-1
+0659                       1650 	DB	2
+0659                       1651 	ENDIF
+0659                       1652 
+0659                       1653 	IF	CONVERT
+0659                       1654 	DB	4
+0659                       1655 	ENDIF
+0659                       1656 
+0659                       1657 	DB	0
+0659                       1658 	DW	LSDRIVE
+0659                       1659 	DB	1
+0659                       1660 	DW	LSDRIVE
+0659                       1661 
+0659                       1662 	IF	CONVERT
+0659                       1663 	DB	2
+0659                       1664 	DW	OLDLSDRIVE
+0659                       1665 	DB	3
+0659                       1666 	DW	OLDLSDRIVE
+0659                       1667 	ENDIF
+0659                       1668 	ENDIF
+0659                       1669 
+0659                       1670 	IF	CROMEMCO4FDC*COMBIN
+0659                       1671 ;
+0659                       1672 ; A PerSci 277 and one 5.25-inch drive.
+0659                       1673 ;
+0659                       1674 DRVTAB:	DB	31H,32H,24H,31H,32H
+0659                       1675 TRKPT:	DB	0,0,1,0,0
+0659                       1676 TRKTAB:	DB	-1,-1
+0659                       1677 INITTAB:
+0659                       1678 
+0659                       1679 	IF	CONVERT-1
+0659                       1680 	DB	3
+0659                       1681 	ENDIF
+0659                       1682 
+0659                       1683 	IF	CONVERT
+0659                       1684 	DB	5
+0659                       1685 	ENDIF
+0659                       1686 
+0659                       1687 	DB	0
+0659                       1688 	DW	LSDRIVE
+0659                       1689 	DB	1
+0659                       1690 	DW	LSDRIVE
+0659                       1691 	DB	2
+0659                       1692 	DW	SSDRIVE
+0659                       1693 
+0659                       1694 	IF	CONVERT
+0659                       1695 	DB	3
+0659                       1696 	DW	OLDLSDRIVE
+0659                       1697 	DB	4
+0659                       1698 	DW	OLDLSDRIVE
+0659                       1699 	ENDIF
+0659                       1700 	ENDIF
+0659                       1701 
+0659                       1702 	IF	CROMEMCO4FDC*SMALL
+0659                       1703 ;
+0659                       1704 ; Three 5.25-inch drives.
+0659                       1705 ;
+0659                       1706 DRVTAB:	DB	21H,22H,24H
+0659                       1707 TRKPT:	DB	0,1,2
+0659                       1708 TRKTAB:	DB	-1,-1,-1
+0659                       1709 INITTAB:DB	3
+0659                       1710 	DB	0
+0659                       1711 	DW	SSDRIVE
+0659                       1712 	DB	1
+0659                       1713 	DW	SSDRIVE
+0659                       1714 	DB	2
+0659                       1715 	DW	SSDRIVE
+0659                       1716 	ENDIF
+0659                       1717 
+0659                       1718 	IF	CUSTOM
+0659                       1719 ;
+0659                       1720 ; Cromemco 4FDC with two 8-inch Shugart-type drives.
+0659                       1721 ;
+0659                       1722 DRVTAB:	DB	31H,32H,31H,32H
+0659                       1723 TRKPT:	DB	0,1,0,1
+0659                       1724 TRKTAB:	DB	-1,-1
+0659                       1725 INITTAB:
+0659                       1726 	IF	CONVERT-1
+0659                       1727 	DB	2
+0659                       1728 	ENDIF
+0659                       1729 
+0659                       1730 	IF	CONVERT
+0659                       1731 	DB	4
+0659                       1732 	ENDIF
+0659                       1733 
+0659                       1734 	DB	0
+0659                       1735 	DW	LSDRIVE
+0659                       1736 	DB	1
+0659                       1737 	DW	LSDRIVE
+0659                       1738 
+0659                       1739 	IF	CONVERT
+0659                       1740 	DB	2
+0659                       1741 	DW	OLDLSDRIVE
+0659                       1742 	DB	3
+0659                       1743 	DW	OLDLSDRIVE
+0659                       1744 	ENDIF
+0659                       1745 	ENDIF
+0659                       1746 
+0659                       1747 	IF	CROMEMCO16FDC*SMALL
+0659                       1748 ;
+0659                       1749 ; Three 5.25-inch drives.
+0659                       1750 ;
+0659                       1751 DRVTAB:	DB	21H,61H,22H,62H,24H,64H
+0659                       1752 TRKPT:	DB	0,0,1,1,2,2
+0659                       1753 TRKTAB:	DB	-1,-1,-1
+0659                       1754 INITTAB:DB	6
+0659                       1755 	DB	0
+0659                       1756 	DW	SSDRIVE
+0659                       1757 	DB	0
+0659                       1758 	DW	SDDRIVE
+0659                       1759 	DB	1
+0659                       1760 	DW	SSDRIVE
+0659                       1761 	DB	1
+0659                       1762 	DW	SDDRIVE
+0659                       1763 	DB	2
+0659                       1764 	DW	SSDRIVE
+0659                       1765 	DB	2
+0659                       1766 	DW	SDDRIVE
+0659                       1767 	ENDIF
+0659                       1768 
+0659                       1769 	IF	CROMEMCO16FDC*COMBIN
+0659                       1770 ;
+0659                       1771 ; A PerSci 277 or 299 and one 5.25-inch drive.
+0659                       1772 ;
+0659                       1773 DRVTAB:	DB	31H,71H,32H,72H,24H,64H,31H,71H,32H,72H
+0659                       1774 TRKPT:	DB	0,0,0,0,1,1,0,0,0,0
+0659                       1775 TRKTAB:	DB	-1,-1
+0659                       1776 INITTAB:
+0659                       1777 	IF	CONVERT-1
+0659                       1778 	DB	6
+0659                       1779 	ENDIF
+0659                       1780 
+0659                       1781 	IF	CONVERT
+0659                       1782 	DB	10
+0659                       1783 	ENDIF
+0659                       1784 
+0659                       1785 	DB	0
+0659                       1786 	DW	LSDRIVE
+0659                       1787 	DB	0
+0659                       1788 	DW	LDDRIVE
+0659                       1789 	DB	1
+0659                       1790 	DW	LSDRIVE
+0659                       1791 	DB	1
+0659                       1792 	DW	LDDRIVE
+0659                       1793 	DB	2
+0659                       1794 	DW	SSDRIVE
+0659                       1795 	DB	2
+0659                       1796 	DW	SDDRIVE
+0659                       1797 
+0659                       1798 	IF	CONVERT
+0659                       1799 	DB	3
+0659                       1800 	DW	OLDLSDRIVE
+0659                       1801 	DB	3
+0659                       1802 	DW	OLDLDDRIVE
+0659                       1803 	DB	4
+0659                       1804 	DW	OLDLSDRIVE
+0659                       1805 	DB	4
+0659                       1806 	DW	OLDLDDRIVE
+0659                       1807 	ENDIF
+0659                       1808 	ENDIF
+0659                       1809 
+0659                       1810 	IF	CROMEMCO16FDC*LARGE
+0659                       1811 ;
+0659                       1812 ; A PerSci 277 or 299.
+0659                       1813 ;
+0659                       1814 DRVTAB:	DB	31H,71H,32H,72H,31H,71H,32H,72H
+0659                       1815 TRKPT:	DB	0,0,0,0,0,0,0,0
+0659                       1816 TRKTAB:	DB	-1
+0659                       1817 INITTAB:
+0659                       1818 	IF	CONVERT-1
+0659                       1819 	DB	4
+0659                       1820 	ENDIF
+0659                       1821 
+0659                       1822 	IF	CONVERT
+0659                       1823 	DB	8
+0659                       1824 	ENDIF
+0659                       1825 
+0659                       1826 	DB	0
+0659                       1827 	DW	LSDRIVE
+0659                       1828 	DB	0
+0659                       1829 	DW	LDDRIVE
+0659                       1830 	DB	1
+0659                       1831 	DW	LSDRIVE
+0659                       1832 	DB	1
+0659                       1833 	DW	LDDRIVE
+0659                       1834 
+0659                       1835 	IF	CONVERT
+0659                       1836 	DB	2
+0659                       1837 	DW	OLDLSDRIVE
+0659                       1838 	DB	2
+0659                       1839 	DW	OLDLDDRIVE
+0659                       1840 	DB	3
+0659                       1841 	DW	OLDLSDRIVE
+0659                       1842 	DB	3
+0659                       1843 	DW	OLDLDDRIVE
+0659                       1844 	ENDIF
+0659                       1845 	ENDIF
+0659                       1846 
+0659                       1847 	IF	SMALL+COMBIN
+0659                       1848 SSDRIVE:
+0659                       1849 	DW	128		; Sector size in bytes.
+0659                       1850 	DB	2		; Sector per allocation unit.
+0659                       1851 	DW	54		; Reserved sectors.
+0659                       1852 	DB	2		; Number of allocation tables.
+0659                       1853 	DW	64		; Number of directory entrys.
+0659                       1854 	DW	720		; Number of sectors on the disk.
+0659                       1855 
+0659                       1856 	IF	SMALLDS-1
+0659                       1857 SDDRIVE:			; This is the IBM Personal Computer
+0659                       1858 	DW	512		; disk format.
+0659                       1859 	DB	1
+0659                       1860 	DW	1
+0659                       1861 	DB	2
+0659                       1862 	DW	64
+0659                       1863 	DW	320
+0659                       1864 	ENDIF
+0659                       1865 
+0659                       1866 	IF	SMALLDS
+0659                       1867 SDDRIVE:
+0659                       1868 	DW	512
+0659                       1869 	DB	2
+0659                       1870 	DW	1
+0659                       1871 	DB	2
+0659                       1872 	DW	112
+0659                       1873 	DW	640
+0659                       1874 	ENDIF
+0659                       1875 	ENDIF			; End of small drive DPTs.
+0659                       1876 
+0659                       1877 	IF	COMBIN+LARGE
+0659                       1878 LSDRIVE:
+0659 80 00                 1879 	DW	128		; Size of sector in bytes.
+065B 04                    1880 	DB	4		; Sectors per allocation unit.
+065C 01 00                 1881 	DW	1		; Number of reserved sectors.
+065E 02                    1882 	DB	2		; Number of File Allocation Tables.
+065F 44 00                 1883 	DW	68		; Number of directory entrys.
+0661 D2 07                 1884 	DW	77*26		; Number of sectors on the disk.
+0663                       1885 
+0663                       1886 	IF	CONVERT
+0663                       1887 OLDLSDRIVE:
+0663 80 00                 1888 	DW	128
+0665 04                    1889 	DB	4
+0666 34 00                 1890 	DW	52		; Old format had two tracks reserved.
+0668 02                    1891 	DB	2
+0669 40 00                 1892 	DW	64		; 64 directory entrys.
+066B D2 07                 1893 	DW	77*26
+066D                       1894 	ENDIF
+066D                       1895 
+066D                       1896 	IF	LARGEDS-1
+066D                       1897 OLDLDDRIVE:
+066D                       1898 LDDRIVE:
+066D 00 04                 1899 	DW	1024
+066F 01                    1900 	DB	1
+0670 01 00                 1901 	DW	1
+0672 02                    1902 	DB	2
+0673 60 00                 1903 	DW	96
+0675 68 02                 1904 	DW	77*8
+0677                       1905 	ENDIF
+0677                       1906 
+0677                       1907 	IF	LARGEDS
+0677                       1908 LDDRIVE:
+0677                       1909 	DW	1024
+0677                       1910 	DB	1
+0677                       1911 	DW	1
+0677                       1912 	DB	2
+0677                       1913 	DW	192		; 192 directory entrys in new 8-inch DD/DS format.
+0677                       1914 	DW	77*8*2
+0677                       1915 
+0677                       1916 	IF	CONVERT
+0677                       1917 OLDLDDRIVE:
+0677                       1918 	DW	1024
+0677                       1919 	DB	1
+0677                       1920 	DW	1
+0677                       1921 	DB	2
+0677                       1922 	DW	128		; 128 directory entrys in old 8-inch DD/DS format.
+0677                       1923 	DW	77*8*2
+0677                       1924 	ENDIF
+0677                       1925 	ENDIF
+0677                       1926 
+0677                       1927 	ENDIF			; End of large drive DPTs.
+0677                       1928 
+0677                       1929 DOSSEG:	EQU	($+15)/16+BIOSSEG	; Compute segment to use for 86-DOS.
+0677                       1930 DOSDIF:	EQU	16*(DOSSEG-BIOSSEG)
+0677                       1931 STKSAV:	EQU	1701H+DOSDIF
+0677                       1932 DMAADD:	EQU	15B4H+DOSDIF
+
+
+Error Count =    0
+
+Symbol Table size =  2293
+Free space =        47479
+
